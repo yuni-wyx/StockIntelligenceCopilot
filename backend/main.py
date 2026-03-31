@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 
 # Load env BEFORE importing chains/tools that may need env vars.
 load_dotenv(Path(__file__).resolve().parent / ".env")
-print("OPENAI_API_KEY loaded:", bool(os.getenv("OPENAI_API_KEY")))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
