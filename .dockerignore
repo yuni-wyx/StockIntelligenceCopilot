@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+*.log
+node_modules
+frontend/stock-ui/.next
+frontend/stock-ui/node_modules
+frontend/stock-ui/.env.local
+backend/.env.example
+backend/.env
