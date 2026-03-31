@@ -321,15 +321,15 @@ If you want a hosted frontend today, use a platform that supports Next.js direct
 
 Place screenshots in this section before publishing:
 
-- `docs/screenshots/home.png`
-- `docs/screenshots/copilot-research.png`
-- `docs/screenshots/copilot-explain.png`
-- `docs/screenshots/timeline.png`
+- `docs/screenshots/home.jpg`
+- `docs/screenshots/copilot-research.jpg`
+- `docs/screenshots/copilot-explain.jpg`
+- `docs/screenshots/copilot-trade.jpg`
 
 Example placeholder:
 
 ```md
-![Home Screen](docs/screenshots/home.png)
+![Home Screen](docs/screenshots/home.jpg)
 ```
 
 ## Troubleshooting
