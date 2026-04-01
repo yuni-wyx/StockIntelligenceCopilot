@@ -108,14 +108,14 @@ function CopilotScreen({
   const abortRef = useRef<AbortController | null>(null);
 
   const endpointMap = {
-    trade: "/api/trade/stream",
-    research: "/api/research/stream",
-    explain: "/api/explain/stream",
+    trade: "/trade/stream",
+    research: "/research/stream",
+    explain: "/explain/stream",
   };
   const fallbackEndpointMap = {
-    trade: "/api/trade",
-    research: "/api/research",
-    explain: "/api/explain",
+    trade: "/trade",
+    research: "/research",
+    explain: "/explain",
   };
 
   async function run() {

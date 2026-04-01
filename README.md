@@ -93,7 +93,7 @@ Required:
 
 - `OPENAI_API_KEY`
 - `ALPHA_VANTAGE_API_KEY`
-- `NEXT_PUBLIC_API_BASE_URL` for deployed frontend builds
+- `NEXT_PUBLIC_BACKEND_BASE_URL` for deployed frontend builds
 
 Optional:
 
@@ -276,9 +276,17 @@ The Pages workflow builds the frontend from `frontend/stock-ui` and publishes th
 
 Before enabling the Pages workflow, add this repository variable in GitHub:
 
-- `NEXT_PUBLIC_API_BASE_URL=https://<your-cloud-run-service-url>`
+- `NEXT_PUBLIC_BACKEND_BASE_URL=https://stock-intelligence-copilot-168709263927.us-central1.run.app`
 
 The frontend will call the backend through that Cloud Run URL.
+
+The frontend app always appends `/api` internally, so the actual explain endpoint used in production is:
+
+- `POST https://stock-intelligence-copilot-168709263927.us-central1.run.app/api/explain`
+
+The bare path below is not a valid frontend target:
+
+- `POST https://stock-intelligence-copilot-168709263927.us-central1.run.app/explain`
 
 ### Google Cloud Run
 
@@ -376,7 +384,7 @@ Check:
 - `backend/.env` exists
 - `OPENAI_API_KEY` is set
 - `ALPHA_VANTAGE_API_KEY` is set
-- `NEXT_PUBLIC_API_BASE_URL` is set for any deployed frontend build
+- `NEXT_PUBLIC_BACKEND_BASE_URL` is set for any deployed frontend build
 
 ### CORS issues
 

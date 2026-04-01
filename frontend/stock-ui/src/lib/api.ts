@@ -37,7 +37,7 @@ type RawTickerSummary = {
 };
 
 export async function fetchWatchlist(tickers: string[]): Promise<WatchlistResult> {
-  const res = await fetch(buildApiUrl("/api/watchlist"), {
+  const res = await fetch(buildApiUrl("/watchlist"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
