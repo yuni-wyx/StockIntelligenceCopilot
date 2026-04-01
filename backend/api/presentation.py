@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from fastapi.responses import StreamingResponse
@@ -9,6 +10,8 @@ try:
     from ..symbols import normalize_symbol
 except ImportError:
     from symbols import normalize_symbol
+
+logger = logging.getLogger(__name__)
 
 
 def serialize_output(output: Any) -> dict:
@@ -85,6 +88,28 @@ def error_output(raw_query: str, exc: Exception) -> dict:
         "confidence": 0,
         "reasoning": [f"Trade mode failed: {message}"],
     }
+
+
+def recovery_output(raw_query: str, exc: Exception, partial: dict | None = None) -> dict:
+    base = error_output(raw_query, exc)
+
+    if not partial:
+        return base
+
+    recovered = {**base, **partial}
+    recovered["error"] = base["error"]
+
+    verb, _ = query_parts(raw_query)
+    if verb == "trade":
+        reasoning = partial.get("reasoning", [])
+        if not isinstance(reasoning, list):
+            reasoning = [str(reasoning)]
+        recovered["reasoning"] = [
+            *[str(item) for item in reasoning],
+            f"Final synthesis failed: {base['error']}",
+        ]
+
+    return recovered
 
 
 def partial_output_snapshot(
@@ -221,8 +246,11 @@ def partial_output_snapshot(
 
 def build_sse_response(raw_query: str, event_source) -> StreamingResponse:
     def event_stream():
+        last_partial: dict | None = None
         try:
             for event in event_source(raw_query):
+                if event["type"] == "partial_output" and isinstance(event.get("data"), dict):
+                    last_partial = event["data"]
                 if event["type"] == "final_output":
                     safe_event = {
                         "type": "final_output",
@@ -233,11 +261,13 @@ def build_sse_response(raw_query: str, event_source) -> StreamingResponse:
                     safe_event = event
                 yield f"data: {json.dumps(safe_event, default=str)}\n\n"
         except Exception as exc:
+            logger.exception("Streaming pipeline failed for query '%s'", raw_query)
+
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
             safe_event = {
                 "type": "final_output",
                 "elapsed": 0,
-                "data": error_output(raw_query, exc),
+                "data": recovery_output(raw_query, exc, partial=last_partial),
             }
             yield f"data: {json.dumps(safe_event, default=str)}\n\n"
 

@@ -101,6 +101,19 @@ Optional:
 - `LANGCHAIN_TRACING_V2`
 - `LANGCHAIN_PROJECT`
 - `BACKEND_CORS_ORIGINS`
+- `ENABLE_LLM_TRADE_SYNTHESIS`
+
+## Trade Synthesis Modes
+
+Trade mode uses deterministic synthesis by default for production and demo reliability. This is the recommended setting because it does not depend on an external LLM/provider call.
+
+An optional LLM-backed trade synthesis path remains available behind a feature flag:
+
+```bash
+ENABLE_LLM_TRADE_SYNTHESIS=true
+```
+
+Use `ENABLE_LLM_TRADE_SYNTHESIS=false` for the stable default. Treat the LLM trade path as optional and experimental.
 
 ## Local Setup
 

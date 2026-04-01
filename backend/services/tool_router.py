@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List
 try:
     from ..schemas.evidence_schema import ToolResult
     from ..schemas.planner_schema import ExecutionPlan, ToolCallSpec, ToolName
+    from ..symbols import detect_market
     from ..tools.earnings_tool import EarningsRequest, fetch_earnings
     from ..tools.fundamentals_tool import FundamentalsRequest, fetch_fundamentals
     from ..tools.market_data_tool import MarketDataRequest, fetch_market_data
@@ -27,6 +28,7 @@ try:
 except ImportError:
     from schemas.evidence_schema import ToolResult
     from schemas.planner_schema import ExecutionPlan, ToolCallSpec, ToolName
+    from symbols import detect_market
     from tools.earnings_tool import EarningsRequest, fetch_earnings
     from tools.fundamentals_tool import FundamentalsRequest, fetch_fundamentals
     from tools.market_data_tool import MarketDataRequest, fetch_market_data
@@ -34,6 +36,16 @@ except ImportError:
 
 
 # ── Tool handler registry ─────────────────────────────────────────────────────
+
+def _dump_model(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if isinstance(value, dict):
+        return value
+    return default
+
 
 def _handle_market_data(spec: ToolCallSpec) -> Dict[str, Any]:
     req = MarketDataRequest(
@@ -56,15 +68,18 @@ def _handle_fundamentals(spec: ToolCallSpec) -> Dict[str, Any]:
         include_segments=spec.params.get("include_segments", False),
     )
     result = fetch_fundamentals(req)
+    profile = _dump_model(getattr(result, "profile", None), {})
+    market = profile.get("market") or detect_market(spec.ticker)
+
     return {
-        "market": result.market,
-        "profile": result.profile.model_dump(),
-        "valuation": result.valuation.model_dump(),
-        "income_statement": result.income_statement.model_dump(),
-        "balance_sheet": result.balance_sheet.model_dump(),
-        "estimates": result.estimates.model_dump() if result.estimates else None,
-        "competitive_advantages": result.competitive_advantages,
-        "key_risks": result.key_risks,
+        "market": market,
+        "profile": profile,
+        "valuation": _dump_model(getattr(result, "valuation", None), {}),
+        "income_statement": _dump_model(getattr(result, "income_statement", None), {}),
+        "balance_sheet": _dump_model(getattr(result, "balance_sheet", None), {}),
+        "estimates": _dump_model(getattr(result, "estimates", None), None),
+        "competitive_advantages": list(getattr(result, "competitive_advantages", []) or []),
+        "key_risks": list(getattr(result, "key_risks", []) or []),
     }
 
 

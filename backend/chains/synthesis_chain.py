@@ -17,6 +17,8 @@ Trade mode uses an LLM to produce a structured trading decision.
 
 from __future__ import annotations
 
+import logging
+import os
 from datetime import datetime
 from typing import Any, List, Tuple
 
@@ -48,6 +50,8 @@ except ImportError:
         WatchlistMonitorOutput,
     )
     from schemas.planner_schema import ExecutionPlan
+
+logger = logging.getLogger(__name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -91,6 +95,95 @@ def _safe_confidence_int(value: Any) -> int:
     except (TypeError, ValueError):
         return 0
     return max(0, min(100, conf))
+
+
+def _llm_trade_synthesis_enabled() -> bool:
+    return os.getenv("ENABLE_LLM_TRADE_SYNTHESIS", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _heuristic_trade_decision(
+    ticker: str,
+    ev,
+    error_note: str | None = None,
+) -> TradingDecisionOutput:
+    md = ev.market_data if ev and ev.market_data else {}
+    fundamentals = ev.fundamentals if ev and ev.fundamentals else {}
+    earnings = ev.earnings if ev and ev.earnings else {}
+    news = ev.news if ev and ev.news else []
+
+    current = float(md.get("current_price", 0) or 0)
+    day_move = float(md.get("price_change_pct_1d", 0) or 0)
+    month_move = float(md.get("price_change_pct_1m", 0) or 0)
+    atr = float(((md.get("technicals") or {}).get("atr_14", 0)) or 0)
+    risk_buffer = atr if atr > 0 else (current * 0.05 if current > 0 else 0)
+    reward_buffer = max(risk_buffer * 1.8, current * 0.08 if current > 0 else 0)
+
+    positive_news = sum(1 for article in news if article.get("sentiment") == "positive")
+    negative_news = sum(1 for article in news if article.get("sentiment") == "negative")
+
+    score = 0.0
+    if month_move > 3:
+        score += 1.0
+    elif month_move < -3:
+        score -= 1.0
+    if day_move > 0.5:
+        score += 0.5
+    elif day_move < -0.5:
+        score -= 0.5
+    score += min(positive_news, 2) * 0.25
+    score -= min(negative_news, 2) * 0.25
+
+    if score >= 0.75:
+        bias = "Bullish"
+    elif score <= -0.75:
+        bias = "Bearish"
+    else:
+        bias = "Neutral"
+
+    if current > 0:
+        buy_zone = f"Current reference: ${current:.2f}"
+        stop_loss = f"${max(current - risk_buffer, 0):.2f}"
+        take_profit = f"${current + reward_buffer:.2f}"
+    else:
+        buy_zone = "Current price unavailable"
+        stop_loss = "Risk review required"
+        take_profit = "Upside target pending"
+
+    confidence = 35
+    if md:
+        confidence += 10
+    if fundamentals:
+        confidence += 10
+    if news:
+        confidence += 5
+    if earnings:
+        confidence += 5
+    confidence = max(20, min(65, confidence))
+
+    reasoning: List[str] = []
+    if current > 0:
+        reasoning.append(f"Fallback setup anchored to the latest retrieved price (${current:.2f}).")
+    if month_move or day_move:
+        reasoning.append(
+            f"Recent momentum snapshot: {_fmt_pct(day_move)} on the day and {_fmt_pct(month_move)} over one month."
+        )
+    if fundamentals.get("competitive_advantages"):
+        reasoning.append(f"Fundamental support: {fundamentals['competitive_advantages'][0]}.")
+    if earnings.get("days_to_next_earnings") is not None:
+        reasoning.append(f"Earnings timing remains relevant: ~{earnings['days_to_next_earnings']} days to next report.")
+    if error_note:
+        reasoning.append(error_note)
+
+    return TradingDecisionOutput(
+        ticker=ticker,
+        generated_at=datetime.utcnow(),
+        bias=bias,
+        buy_zone=buy_zone,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+        confidence=confidence,
+        reasoning=reasoning,
+    )
 
 
 # ── Mode 1: Stock Research ────────────────────────────────────────────────────
@@ -534,6 +627,9 @@ def _synthesise_trade(
     ticker = plan.tickers[0]
     ev = evidence.get_ticker(ticker)
 
+    if not _llm_trade_synthesis_enabled():
+        return _heuristic_trade_decision(ticker, ev)
+
     chain = build_llm_synthesis_chain()
 
     payload = {
@@ -544,7 +640,11 @@ def _synthesise_trade(
         "news": ev.news[:8] if ev and ev.news else [],
     }
 
-    result = chain.invoke({"input": payload})
+    try:
+        result = chain.invoke({"input": payload})
+    except Exception as exc:
+        logger.exception("Trade LLM synthesis failed for %s", ticker)
+        return _heuristic_trade_decision(ticker, ev, error_note=f"Final synthesis failed: {exc}")
 
     reasoning = result.get("reasoning", [])
     if not isinstance(reasoning, list):

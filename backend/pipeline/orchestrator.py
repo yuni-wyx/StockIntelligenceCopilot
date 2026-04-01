@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime, timezone
 from typing import Any, Generator
@@ -14,6 +15,8 @@ except ImportError:
     from pipeline.planning import classify_and_plan, plan_from_intent, trace_intent
     from pipeline.retrieval import retrieve_evidence, trace_aggregate, trace_tool_routing
     from pipeline.synthesis import synthesise_output, trace_synthesis
+
+logger = logging.getLogger(__name__)
 
 
 def execute_pipeline(raw_query: str) -> Any:
@@ -190,7 +193,17 @@ def stream_pipeline_events(raw_query: str) -> Generator[dict, None, None]:
             "message": "Draft analysis is available",
             "data": partial,
         }
-    output = trace_synthesis(evidence, plan)
+    try:
+        output = trace_synthesis(evidence, plan)
+    except Exception:
+        logger.exception(
+            "Synthesis failed after aggregation",
+            extra={
+                "mode": getattr(plan, "mode", None),
+                "tickers": getattr(plan, "tickers", []),
+            },
+        )
+        raise
     serialized_output = serialize_output(output)
     yield _timeline_event(
         step="synthesis",
