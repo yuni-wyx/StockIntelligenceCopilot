@@ -144,7 +144,10 @@ def stream_pipeline_events(raw_query: str) -> Generator[dict, None, None]:
         "type": "stage_done",
         "stage": "tools",
         "message": "Tool execution complete",
-        "data": [r.model_dump(mode="json") if hasattr(r, "model_dump") else str(r) for r in tool_results],
+        "data": [
+            r.model_dump(mode="json") if hasattr(r, "model_dump") else str(r)
+            for r in tool_results
+        ],
     }
     partial = partial_output_snapshot(raw_query, "tools", tool_results=tool_results)
     if partial is not None:
@@ -162,7 +165,10 @@ def stream_pipeline_events(raw_query: str) -> Generator[dict, None, None]:
         step="evidence_retrieval",
         title="Evidence Retrieval",
         status="completed",
-        summary=f"Retrieved {successful} successful evidence set(s){f' with {failed} issue(s)' if failed else ''}.",
+        summary=(
+            f"Retrieved {successful} successful evidence set(s)"
+            f"{f' with {failed} issue(s)' if failed else ''}."
+        ),
         started_at=step_started,
         metadata={
             "successful_calls": successful,
@@ -183,7 +189,11 @@ def stream_pipeline_events(raw_query: str) -> Generator[dict, None, None]:
         "type": "stage_done",
         "stage": "aggregation",
         "message": "Evidence aggregated",
-        "data": evidence.model_dump(mode="json") if hasattr(evidence, "model_dump") else str(evidence),
+        "data": (
+            evidence.model_dump(mode="json")
+            if hasattr(evidence, "model_dump")
+            else str(evidence)
+        ),
     }
     partial = partial_output_snapshot(raw_query, "aggregation", evidence=evidence)
     if partial is not None:

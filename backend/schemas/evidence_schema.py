@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-
 # ── Individual tool result wrappers ─────────────────────────────────────────
 
 class ToolResult(BaseModel):

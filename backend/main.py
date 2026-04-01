@@ -1,6 +1,6 @@
+# ruff: noqa: E402
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -50,6 +50,7 @@ def _cors_origins_from_env() -> list[str]:
     raw = os.getenv("BACKEND_CORS_ORIGINS", "http://localhost:3000")
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
     return origins or ["http://localhost:3000"]
+
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 
@@ -209,7 +210,9 @@ def _render_research(out: StockResearchOutput) -> None:
     console.print(
         Panel(
             f"[bold]{out.ticker}[/bold]  •  "
-            f"Sentiment: [bold {sentiment_colour}]{out.overall_sentiment}[/bold {sentiment_colour}]  •  "
+            "Sentiment: "
+            f"[bold {sentiment_colour}]{out.overall_sentiment}"
+            f"[/bold {sentiment_colour}]  •  "
             f"Generated: {out.generated_at.strftime('%Y-%m-%d %H:%M UTC')}",
             title="[bold cyan]Stock Research Report[/bold cyan]",
             box=box.ROUNDED,
@@ -297,7 +300,12 @@ def _render_watchlist(out: WatchlistMonitorOutput) -> None:
             "STRONG_DOWN": "red",
         }.get(ts.momentum, "white")
 
-        console.print(Rule(f"[bold yellow]{ts.ticker}[/bold yellow]  [{mom_colour}]{ts.momentum}[/{mom_colour}]"))
+        console.print(
+            Rule(
+                f"[bold yellow]{ts.ticker}[/bold yellow]  "
+                f"[{mom_colour}]{ts.momentum}[/{mom_colour}]"
+            )
+        )
         console.print(f"  {ts.weekly_highlights}")
         if ts.major_news:
             console.print("  [bold]News:[/bold]")

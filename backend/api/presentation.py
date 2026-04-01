@@ -126,7 +126,10 @@ def partial_output_snapshot(
             count = len(plan.tool_calls) if plan else 0
             return {
                 "ticker": ticker,
-                "fundamental_summary": f"Research plan ready for {ticker}. Collecting {count} evidence sources.",
+                "fundamental_summary": (
+                    f"Research plan ready for {ticker}. "
+                    f"Collecting {count} evidence sources."
+                ),
                 "recent_news_summary": "Gathering recent headlines and catalyst context.",
                 "bull_case": "",
                 "bear_case": "",
@@ -134,12 +137,21 @@ def partial_output_snapshot(
                 "overall_sentiment": "NEUTRAL",
             }
         if stage == "tools":
-            successful = sum(1 for result in (tool_results or []) if getattr(result, "success", False))
+            successful = sum(
+                1
+                for result in (tool_results or [])
+                if getattr(result, "success", False)
+            )
             total = len(tool_results or [])
             return {
                 "ticker": ticker,
-                "fundamental_summary": f"Collected {successful}/{total} tool responses for {ticker}.",
-                "recent_news_summary": "Combining fundamentals, market data, news, and earnings into a draft research view.",
+                "fundamental_summary": (
+                    f"Collected {successful}/{total} tool responses for {ticker}."
+                ),
+                "recent_news_summary": (
+                    "Combining fundamentals, market data, news, and earnings "
+                    "into a draft research view."
+                ),
                 "bull_case": "",
                 "bear_case": "",
                 "what_to_watch_next": [],
@@ -169,13 +181,20 @@ def partial_output_snapshot(
             return {
                 "ticker": ticker,
                 "price_change_pct": 0,
-                "price_move_summary": f"Preparing an explanation for {ticker} using {count} evidence sources.",
+                "price_move_summary": (
+                    f"Preparing an explanation for {ticker} "
+                    f"using {count} evidence sources."
+                ),
                 "overall_confidence": 0,
                 "ranked_causes": [],
                 "what_to_watch_next": [],
             }
         if stage == "tools":
-            successful = sum(1 for result in (tool_results or []) if getattr(result, "success", False))
+            successful = sum(
+                1
+                for result in (tool_results or [])
+                if getattr(result, "success", False)
+            )
             return {
                 "ticker": ticker,
                 "price_change_pct": 0,
@@ -217,7 +236,11 @@ def partial_output_snapshot(
                 "reasoning": [f"Trade plan ready for {ticker}. Pulling {count} evidence sources."],
             }
         if stage == "tools":
-            successful = sum(1 for result in (tool_results or []) if getattr(result, "success", False))
+            successful = sum(
+                1
+                for result in (tool_results or [])
+                if getattr(result, "success", False)
+            )
             return {
                 "ticker": ticker,
                 "bias": "Neutral",
@@ -234,11 +257,18 @@ def partial_output_snapshot(
             return {
                 "ticker": ticker,
                 "bias": "Neutral",
-                "buy_zone": f"Current reference: ${current:.2f}" if current else "Current price unavailable",
+                "buy_zone": (
+                    f"Current reference: ${current:.2f}"
+                    if current
+                    else "Current price unavailable"
+                ),
                 "stop_loss": "Finalizing",
                 "take_profit": "Finalizing",
                 "confidence": 0,
-                "reasoning": ["Evidence aggregated. The final trade decision is being synthesized."],
+                "reasoning": [
+                    "Evidence aggregated. "
+                    "The final trade decision is being synthesized."
+                ],
             }
 
     return None

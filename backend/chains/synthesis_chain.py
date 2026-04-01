@@ -33,8 +33,8 @@ try:
         StockResearchOutput,
         TickerWeeklySummary,
         TradingDecisionOutput,
-        WatchPoint,
         WatchlistMonitorOutput,
+        WatchPoint,
     )
     from ..schemas.planner_schema import ExecutionPlan
 except ImportError:
@@ -46,8 +46,8 @@ except ImportError:
         StockResearchOutput,
         TickerWeeklySummary,
         TradingDecisionOutput,
-        WatchPoint,
         WatchlistMonitorOutput,
+        WatchPoint,
     )
     from schemas.planner_schema import ExecutionPlan
 
@@ -165,12 +165,17 @@ def _heuristic_trade_decision(
         reasoning.append(f"Fallback setup anchored to the latest retrieved price (${current:.2f}).")
     if month_move or day_move:
         reasoning.append(
-            f"Recent momentum snapshot: {_fmt_pct(day_move)} on the day and {_fmt_pct(month_move)} over one month."
+            "Recent momentum snapshot: "
+            f"{_fmt_pct(day_move)} on the day and "
+            f"{_fmt_pct(month_move)} over one month."
         )
     if fundamentals.get("competitive_advantages"):
         reasoning.append(f"Fundamental support: {fundamentals['competitive_advantages'][0]}.")
     if earnings.get("days_to_next_earnings") is not None:
-        reasoning.append(f"Earnings timing remains relevant: ~{earnings['days_to_next_earnings']} days to next report.")
+        reasoning.append(
+            "Earnings timing remains relevant: "
+            f"~{earnings['days_to_next_earnings']} days to next report."
+        )
     if error_note:
         reasoning.append(error_note)
 
@@ -291,7 +296,10 @@ def _synthesise_research(
             watch_points.append(
                 WatchPoint(
                     item="RSI Reversal Signal",
-                    reason=f"RSI at {rsi:.0f} suggests {'overbought' if rsi > 65 else 'oversold'} condition",
+                    reason=(
+                        f"RSI at {rsi:.0f} suggests "
+                        f"{'overbought' if rsi > 65 else 'oversold'} condition"
+                    ),
                     timeframe="1–2 weeks",
                 )
             )
@@ -333,9 +341,16 @@ def _synthesise_price_movement(
     vol_ratio = md.get("volume_ratio", 1.0) if md else 1.0
 
     move_direction = "rallied" if price_pct >= 0 else "declined"
+    volume_label = (
+        "strong conviction"
+        if vol_ratio > 1.5
+        else "moderate participation"
+        if vol_ratio > 1.0
+        else "light volume, possible noise"
+    )
     vol_context = (
         f"Volume was {vol_ratio:.1f}x the 30-day average, suggesting "
-        f"{'strong conviction' if vol_ratio > 1.5 else 'moderate participation' if vol_ratio > 1.0 else 'light volume, possible noise'}."
+        f"{volume_label}."
     )
 
     price_move_summary = (
@@ -369,10 +384,14 @@ def _synthesise_price_movement(
             candidates.append(
                 (
                     "Pre-earnings positioning",
-                    f"Earnings are {days} days away; traders often position aggressively in the week prior.",
+                    "Earnings are "
+                    f"{days} days away; traders often position aggressively "
+                    "in the week prior.",
                     [
-                        f"Next report: {ev.earnings.get('next_earnings', {}).get('period', 'N/A')}",
-                        f"Avg post-earnings move: {ev.earnings.get('avg_post_earnings_move_pct', 0):+.1f}%",
+                        "Next report: "
+                        f"{ev.earnings.get('next_earnings', {}).get('period', 'N/A')}",
+                        "Avg post-earnings move: "
+                        f"{ev.earnings.get('avg_post_earnings_move_pct', 0):+.1f}%",
                     ],
                     0.65,
                 )
@@ -519,7 +538,10 @@ def _synthesise_watchlist(
 
         wps = [
             WatchPoint(
-                item=f"{ticker} price level $" + (f"{md.get('current_price', 0) * 1.05:.0f}" if md else "N/A"),
+                item=(
+                    f"{ticker} price level $"
+                    + (f"{md.get('current_price', 0) * 1.05:.0f}" if md else "N/A")
+                ),
                 reason="Key resistance if uptrend continues",
                 timeframe="1 week",
             )
@@ -555,7 +577,11 @@ def _synthesise_watchlist(
         f"Top performer: {top_mover[0]} ({_fmt_pct(top_mover[1])}). "
         f"Laggard: {bot_mover[0]} ({_fmt_pct(bot_mover[1])}). "
         f"Overall news sentiment: "
-        f"{_sentiment_label(sum(all_news_sentiments) / len(all_news_sentiments) if all_news_sentiments else 0)}."
+        f"{_sentiment_label(
+            sum(all_news_sentiments) / len(all_news_sentiments)
+            if all_news_sentiments
+            else 0
+        )}."
     )
 
     macro_risks = [

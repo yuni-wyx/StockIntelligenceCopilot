@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import yfinance as yf
-from pydantic import BaseModel, Field
 from langsmith import traceable
+from pydantic import BaseModel, Field
 
 try:
     from ..symbols import normalize_symbol
@@ -25,7 +25,10 @@ class EarningsRequest(BaseModel):
 class EarningsEstimate(BaseModel):
     period: str = Field(..., description="Quarter label, e.g. 'Q2 FY2025'.")
     report_date: str
-    report_time: str = Field(..., description="BMO (before market open) or AMC (after market close).")
+    report_time: str = Field(
+        ...,
+        description="BMO (before market open) or AMC (after market close).",
+    )
     eps_estimate_consensus: float
     eps_estimate_high: float
     eps_estimate_low: float
@@ -190,7 +193,11 @@ def _price_move_after_date(yf_ticker: yf.Ticker, report_date: str) -> float:
     try:
         start = pd.Timestamp(report_date) - pd.Timedelta(days=3)
         end = pd.Timestamp(report_date) + pd.Timedelta(days=5)
-        hist = yf_ticker.history(start=start.date().isoformat(), end=end.date().isoformat(), interval="1d")
+        hist = yf_ticker.history(
+            start=start.date().isoformat(),
+            end=end.date().isoformat(),
+            interval="1d",
+        )
         hist = hist.dropna()
         if len(hist) < 2:
             return 0.0
@@ -250,13 +257,17 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
 
         if earnings_dates is not None and not earnings_dates.empty:
             try:
-                matched = earnings_dates[earnings_dates.index.date == date.fromisoformat(report_date_iso)]
+                matched = earnings_dates[
+                    earnings_dates.index.date == date.fromisoformat(report_date_iso)
+                ]
                 if not matched.empty:
                     row = matched.iloc[0]
                     eps_consensus = _safe_float(
                         row.get("EPS Estimate") or row.get("EPS Estimate".lower())
                     )
-                    num_analysts = _safe_int(row.get("No. of Analysts") or row.get("numberOfAnalysts"))
+                    num_analysts = _safe_int(
+                        row.get("No. of Analysts") or row.get("numberOfAnalysts")
+                    )
             except Exception:
                 pass
 
@@ -264,7 +275,10 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
         eps_high = round(eps_consensus * 1.08, 2) if eps_consensus else 0.0
         eps_low = round(eps_consensus * 0.92, 2) if eps_consensus else 0.0
 
-        revenue_est_b = round(_safe_float(info.get("revenueQuarterlyGrowth")) * 0, 2)  # placeholder if unavailable
+        revenue_est_b = round(
+            _safe_float(info.get("revenueQuarterlyGrowth")) * 0,
+            2,
+        )  # placeholder if unavailable
         period = _make_period_label(report_date_iso)
         days_to_next_earnings = (date.fromisoformat(report_date_iso) - date.today()).days
 
@@ -295,8 +309,16 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
 
                 eps_estimate = _safe_float(row.get("EPS Estimate"))
                 eps_actual = _safe_float(row.get("Reported EPS"))
-                eps_surprise = round(eps_actual - eps_estimate, 3) if eps_estimate or eps_actual else 0.0
-                eps_surprise_pct = round((eps_surprise / eps_estimate) * 100, 2) if eps_estimate else 0.0
+                eps_surprise = (
+                    round(eps_actual - eps_estimate, 3)
+                    if eps_estimate or eps_actual
+                    else 0.0
+                )
+                eps_surprise_pct = (
+                    round((eps_surprise / eps_estimate) * 100, 2)
+                    if eps_estimate
+                    else 0.0
+                )
 
                 revenue_actual = revenue_map.get(report_date, 0.0)
                 revenue_estimate = revenue_actual
@@ -322,7 +344,10 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
                             "reported_eps": round(eps_actual, 2),
                             "eps_estimate": round(eps_estimate, 2),
                         },
-                        management_commentary="Management commentary not available from Yahoo Finance feed.",
+                        management_commentary=(
+                            "Management commentary not available "
+                            "from Yahoo Finance feed."
+                        ),
                     )
                 )
         except Exception:

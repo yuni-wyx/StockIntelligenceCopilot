@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import os
-import requests
 from datetime import datetime, timezone
 from typing import Any, List, Optional
-from pydantic import BaseModel, Field
-from langsmith import traceable
+
+import requests
 import yfinance as yf
+from langsmith import traceable
+from pydantic import BaseModel, Field
 
 try:
     from ..config import ALPHA_VANTAGE_API_KEY
@@ -89,7 +89,11 @@ def _extract_yahoo_news(ticker: str, limit: int) -> list[NewsArticle]:
             or ""
         )
         url = content.get("canonicalUrl", {}).get("url") or item.get("link") or ""
-        source = content.get("provider", {}).get("displayName") or item.get("publisher") or "Yahoo Finance"
+        source = (
+            content.get("provider", {}).get("displayName")
+            or item.get("publisher")
+            or "Yahoo Finance"
+        )
         published_ts = content.get("pubDate") or item.get("providerPublishTime")
 
         if isinstance(published_ts, (int, float)):
@@ -181,7 +185,12 @@ def fetch_news(request: NewsRequest) -> NewsResponse:
                         sentiment_score=round(sentiment_score, 3),
                         relevance_score=round(relevance, 3),
                         tickers_mentioned=[ticker],
-                        topics=[topic.get("topic") for topic in item.get("topics", []) if "topic" in topic] or ["general"],
+                        topics=[
+                            topic.get("topic")
+                            for topic in item.get("topics", [])
+                            if "topic" in topic
+                        ]
+                        or ["general"],
                     )
                 )
         except Exception:

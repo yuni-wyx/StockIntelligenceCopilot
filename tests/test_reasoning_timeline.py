@@ -5,7 +5,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -50,7 +49,12 @@ class ReasoningTimelineTest(unittest.TestCase):
         ]
         evidence = AggregatedEvidence(
             mode="price_movement",
-            tickers_evidence={"TSLA": TickerEvidence(ticker="TSLA", market_data={"price_change_pct_1d": 1.2})},
+            tickers_evidence={
+                "TSLA": TickerEvidence(
+                    ticker="TSLA",
+                    market_data={"price_change_pct_1d": 1.2},
+                )
+            },
             total_tool_calls=1,
             successful_calls=1,
         )
@@ -64,12 +68,15 @@ class ReasoningTimelineTest(unittest.TestCase):
             what_to_watch_next=[],
         )
 
-        with patch("backend.pipeline.orchestrator.trace_intent", return_value=intent), patch(
-            "backend.pipeline.orchestrator.plan_from_intent", return_value=plan
-        ), patch("backend.pipeline.orchestrator.trace_tool_routing", return_value=tool_results), patch(
-            "backend.pipeline.orchestrator.trace_aggregate", return_value=evidence
-        ), patch(
-            "backend.pipeline.orchestrator.trace_synthesis", return_value=output
+        with (
+            patch("backend.pipeline.orchestrator.trace_intent", return_value=intent),
+            patch("backend.pipeline.orchestrator.plan_from_intent", return_value=plan),
+            patch(
+                "backend.pipeline.orchestrator.trace_tool_routing",
+                return_value=tool_results,
+            ),
+            patch("backend.pipeline.orchestrator.trace_aggregate", return_value=evidence),
+            patch("backend.pipeline.orchestrator.trace_synthesis", return_value=output),
         ):
             events = list(stream_pipeline_events("explain TSLA"))
 

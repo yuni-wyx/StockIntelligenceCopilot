@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-
 TW_ALIAS_MAP: dict[str, str] = {
     "2330": "2330.TW",
     "2330.tw": "2330.TW",

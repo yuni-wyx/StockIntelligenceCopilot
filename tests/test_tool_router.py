@@ -6,14 +6,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
 class ToolRouterFundamentalsTest(unittest.TestCase):
-    def test_handle_fundamentals_uses_profile_market_and_tolerates_partial_nested_fields(self) -> None:
+    def test_handle_fundamentals_tolerates_partial_fields(self) -> None:
         from backend.schemas.planner_schema import ToolCallSpec, ToolName
         from backend.services.tool_router import _handle_fundamentals
         from backend.tools.fundamentals_tool import CompanyProfile

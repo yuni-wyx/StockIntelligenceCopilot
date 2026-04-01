@@ -12,7 +12,6 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
-
 # ── Shared primitives ────────────────────────────────────────────────────────
 
 class WatchPoint(BaseModel):

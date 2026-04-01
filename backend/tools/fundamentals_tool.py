@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import yfinance as yf
-from pydantic import BaseModel, Field
 from langsmith import traceable
+from pydantic import BaseModel, Field
 
 try:
     from ..symbols import detect_market, normalize_symbol
@@ -206,7 +206,12 @@ def fetch_fundamentals(request: FundamentalsRequest) -> FundamentalsResponse:
     city = info.get("city") or ""
     state = info.get("state") or ""
     country = info.get("country") or ""
-    headquarters = ", ".join(part for part in [city, state or country] if part).strip(", ") or "Unknown"
+    headquarters = (
+        ", ".join(part for part in [city, state or country] if part).strip(", ")
+        or "Unknown"
+    )
+    company_officers = info.get("companyOfficers") or [{}]
+    lead_officer = company_officers[0]
 
     profile = CompanyProfile(
         name=info.get("longName") or info.get("shortName") or ticker,
@@ -216,9 +221,9 @@ def fetch_fundamentals(request: FundamentalsRequest) -> FundamentalsResponse:
         exchange=info.get("exchange") or "Unknown",
         description=info.get("longBusinessSummary") or "No company description available.",
         employees=_safe_int(info.get("fullTimeEmployees")),
-        founded=str(info.get("companyOfficers", [{}])[0].get("yearBorn", "")) if info.get("companyOfficers") else "Unknown",
+        founded=str(lead_officer.get("yearBorn", "")) if info.get("companyOfficers") else "Unknown",
         headquarters=headquarters,
-        ceo=(info.get("companyOfficers", [{}])[0].get("name") if info.get("companyOfficers") else None) or "Unknown",
+        ceo=(lead_officer.get("name") if info.get("companyOfficers") else None) or "Unknown",
     )
 
     # ---- Valuation ----
@@ -276,8 +281,16 @@ def fetch_fundamentals(request: FundamentalsRequest) -> FundamentalsResponse:
     current_liabilities = _get_row_value(balance_sheet, "Current Liabilities")
     inventory = _get_row_value(balance_sheet, "Inventory")
 
-    current_ratio = (current_assets / current_liabilities) if current_liabilities else _safe_float(info.get("currentRatio"))
-    quick_ratio = ((current_assets - inventory) / current_liabilities) if current_liabilities else current_ratio
+    current_ratio = (
+        (current_assets / current_liabilities)
+        if current_liabilities
+        else _safe_float(info.get("currentRatio"))
+    )
+    quick_ratio = (
+        ((current_assets - inventory) / current_liabilities)
+        if current_liabilities
+        else current_ratio
+    )
 
     balance = BalanceSheetHighlights(
         cash_and_equivalents_billions=_to_billions(cash),
@@ -301,7 +314,11 @@ def fetch_fundamentals(request: FundamentalsRequest) -> FundamentalsResponse:
             next_year_eps_est=round(_safe_float(info.get("forwardEps")), 2),
             revenue_growth_est_1y=round(_safe_float(info.get("revenueGrowth")), 4),
             num_analysts=num_analysts,
-            buy_ratings=max(num_analysts - 2, 0) if rec_mean and rec_mean <= 2.0 else max(num_analysts // 2, 0),
+            buy_ratings=(
+                max(num_analysts - 2, 0)
+                if rec_mean and rec_mean <= 2.0
+                else max(num_analysts // 2, 0)
+            ),
             hold_ratings=2 if num_analysts >= 2 else 0,
             sell_ratings=0 if rec_mean and rec_mean <= 3.0 else 1,
             mean_price_target=round(_safe_float(info.get("targetMeanPrice")), 2),

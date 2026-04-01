@@ -6,7 +6,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -51,7 +50,10 @@ class ApiPresentationTest(unittest.TestCase):
                     "stop_loss": "Finalizing",
                     "take_profit": "Finalizing",
                     "confidence": 0,
-                    "reasoning": ["Evidence aggregated. The final trade decision is being synthesized."],
+                    "reasoning": [
+                        "Evidence aggregated. "
+                        "The final trade decision is being synthesized."
+                    ],
                 },
             }
             raise RuntimeError("Connection error.")
@@ -66,7 +68,11 @@ class ApiPresentationTest(unittest.TestCase):
 
         chunks = asyncio.run(collect_chunks())
         events = [
-            json.loads((chunk.decode() if isinstance(chunk, bytes) else chunk).replace("data: ", "").strip())
+            json.loads(
+                (
+                    chunk.decode() if isinstance(chunk, bytes) else chunk
+                ).replace("data: ", "").strip()
+            )
             for chunk in chunks
         ]
 
@@ -74,7 +80,10 @@ class ApiPresentationTest(unittest.TestCase):
         self.assertEqual(final_event["data"]["buy_zone"], "Current reference: $1845.00")
         self.assertEqual(final_event["data"]["stop_loss"], "Finalizing")
         self.assertEqual(final_event["data"]["take_profit"], "Finalizing")
-        self.assertIn("Final synthesis failed: Connection error.", final_event["data"]["reasoning"][-1])
+        self.assertIn(
+            "Final synthesis failed: Connection error.",
+            final_event["data"]["reasoning"][-1],
+        )
 
 
 if __name__ == "__main__":

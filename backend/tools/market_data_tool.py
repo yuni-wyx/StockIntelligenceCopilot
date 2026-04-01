@@ -8,13 +8,11 @@ Mock implementation — replace fetch_market_data() with real API calls.
 from __future__ import annotations
 
 import random
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List
-from langsmith import traceable
 
 import yfinance as yf
-import pandas as pd
-
+from langsmith import traceable
 from pydantic import BaseModel, Field
 
 try:

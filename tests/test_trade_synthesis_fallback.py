@@ -5,7 +5,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -91,8 +90,15 @@ class TradeSynthesisFallbackTest(unittest.TestCase):
             successful_calls=4,
         )
 
-        with patch("backend.pipeline.orchestrator.classify_and_plan", return_value=(intent, plan)), patch(
-            "backend.pipeline.orchestrator.retrieve_evidence", return_value=([], evidence)
+        with (
+            patch(
+                "backend.pipeline.orchestrator.classify_and_plan",
+                return_value=(intent, plan),
+            ),
+            patch(
+                "backend.pipeline.orchestrator.retrieve_evidence",
+                return_value=([], evidence),
+            ),
         ):
             output = execute_pipeline("trade TSLA")
 
@@ -102,7 +108,7 @@ class TradeSynthesisFallbackTest(unittest.TestCase):
         self.assertNotEqual(output.take_profit, "N/A")
         self.assertNotIn("Final synthesis failed:", output.reasoning[-1])
 
-    def test_execute_pipeline_trade_falls_back_to_aggregated_trade_setup_when_llm_fails(self) -> None:
+    def test_trade_falls_back_to_aggregated_setup_when_llm_fails(self) -> None:
         from backend.pipeline.orchestrator import execute_pipeline
         from backend.schemas.evidence_schema import AggregatedEvidence, TickerEvidence
         from backend.schemas.intent_schema import AnalysisMode, IntentOutput

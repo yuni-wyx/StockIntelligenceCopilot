@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import sys
 import types
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 
 def _already_installed(name: str) -> bool:
@@ -30,7 +30,6 @@ def _already_installed(name: str) -> bool:
 
 if not _already_installed("pydantic"):
     import dataclasses
-    import json
 
     _pydantic = types.ModuleType("pydantic")
 
@@ -163,7 +162,6 @@ if not _already_installed("langchain_core"):
 # ── rich stub ─────────────────────────────────────────────────────────────────
 
 if not _already_installed("rich"):
-    import textwrap
 
     _rich = types.ModuleType("rich")
     _console_mod = types.ModuleType("rich.console")

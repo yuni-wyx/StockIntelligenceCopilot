@@ -58,7 +58,10 @@ def _classify(raw_query: str) -> IntentOutput:
     elif q.startswith("watchlist ") or q.startswith("monitor ") or q.startswith("watch "):
         mode = AnalysisMode.WATCHLIST_MONITOR
         confidence = 0.97
-        reasoning = "Query starts with a monitoring verb and contains one or more ticker candidates."
+        reasoning = (
+            "Query starts with a monitoring verb and contains one "
+            "or more ticker candidates."
+        )
 
     elif q.startswith("trade ") or q.startswith("decision ") or q.startswith("setup "):
         mode = AnalysisMode.TRADE
@@ -69,7 +72,10 @@ def _classify(raw_query: str) -> IntentOutput:
         if len(tickers_found) > 1:
             mode = AnalysisMode.WATCHLIST_MONITOR
             confidence = 0.72
-            reasoning = "Multiple tickers detected with no explicit verb; defaulting to watchlist mode."
+            reasoning = (
+                "Multiple tickers detected with no explicit verb; "
+                "defaulting to watchlist mode."
+            )
         else:
             mode = AnalysisMode.STOCK_RESEARCH
             confidence = 0.65
