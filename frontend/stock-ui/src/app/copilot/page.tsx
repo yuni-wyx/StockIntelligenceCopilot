@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { buildApiUrl } from "@/lib/apiBase";
 import { detectTickerMarket, normalizeTicker } from "@/lib/tickerMap";
 
 type Mode = "trade" | "research" | "explain";
@@ -62,6 +63,14 @@ type CopilotOutput = {
 };
 
 export default function CopilotPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a] text-white px-6 py-6">Loading copilot...</div>}>
+      <CopilotPageContent />
+    </Suspense>
+  );
+}
+
+function CopilotPageContent() {
   const searchParams = useSearchParams();
   const initialTicker = normalizeTicker(searchParams.get("ticker") ?? "");
   const requestedMode = searchParams.get("mode");
@@ -144,7 +153,7 @@ function CopilotScreen({
   }
 
   async function runStream(clean: string, signal: AbortSignal): Promise<boolean> {
-    const res = await fetch(`http://localhost:8000${endpointMap[mode]}`, {
+    const res = await fetch(buildApiUrl(endpointMap[mode]), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticker: clean }),
@@ -197,7 +206,7 @@ function CopilotScreen({
       message,
     });
 
-    const res = await fetch(`http://localhost:8000${fallbackEndpointMap[mode]}`, {
+    const res = await fetch(buildApiUrl(fallbackEndpointMap[mode]), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticker: clean }),

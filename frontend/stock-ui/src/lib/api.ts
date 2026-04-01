@@ -1,3 +1,5 @@
+import { buildApiUrl } from "@/lib/apiBase";
+
 export type WatchlistResult = {
   tickers: string[];
   portfolioSummary: string;
@@ -35,7 +37,7 @@ type RawTickerSummary = {
 };
 
 export async function fetchWatchlist(tickers: string[]): Promise<WatchlistResult> {
-  const res = await fetch("http://localhost:8000/api/watchlist", {
+  const res = await fetch(buildApiUrl("/api/watchlist"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

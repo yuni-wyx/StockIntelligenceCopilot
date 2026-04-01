@@ -16,6 +16,7 @@ backend/.env
 frontend/stock-ui/.env
 frontend/stock-ui/.env.local
 frontend/stock-ui/.next/
+frontend/stock-ui/out/
 frontend/stock-ui/node_modules/
 
 dist/

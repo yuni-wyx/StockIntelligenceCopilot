@@ -93,6 +93,7 @@ Required:
 
 - `OPENAI_API_KEY`
 - `ALPHA_VANTAGE_API_KEY`
+- `NEXT_PUBLIC_API_BASE_URL` for deployed frontend builds
 
 Optional:
 
@@ -130,6 +131,12 @@ Or use the Makefile:
 ```bash
 make install-backend
 make install-frontend
+```
+
+If `ruff` is missing locally even though it is listed in `requirements.txt`, refresh the backend environment with:
+
+```bash
+make install-backend
 ```
 
 ## Run Locally
@@ -259,6 +266,20 @@ Before publishing, make sure you do not commit real secrets. This repo should us
 
 ## Deployment
 
+### GitHub Pages for Frontend Only
+
+This repository contains the full stack in one repo, but GitHub Pages should be used only for the static frontend export. The backend must run separately on Google Cloud Run.
+
+The Pages workflow builds the frontend from `frontend/stock-ui` and publishes the generated `out/` directory. The expected Pages URL is:
+
+- `https://yuni-wyx.github.io/StockIntelligenceCopilot/`
+
+Before enabling the Pages workflow, add this repository variable in GitHub:
+
+- `NEXT_PUBLIC_API_BASE_URL=https://<your-cloud-run-service-url>`
+
+The frontend will call the backend through that Cloud Run URL.
+
 ### Google Cloud Run
 
 Cloud Run is the recommended deployment target for the backend.
@@ -273,7 +294,7 @@ gcloud config set project <PROJECT_ID>
 2. Enable required services:
 
 ```bash
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
 ```
 
 3. Build the container from the repo root:
@@ -282,7 +303,22 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregi
 gcloud builds submit --tag gcr.io/<PROJECT_ID>/stock-intelligence-copilot
 ```
 
-4. Deploy to Cloud Run:
+4. Create secrets:
+
+```bash
+printf '%s' '<OPENAI_API_KEY>' | gcloud secrets create OPENAI_API_KEY --data-file=-
+printf '%s' '<ALPHA_VANTAGE_API_KEY>' | gcloud secrets create ALPHA_VANTAGE_API_KEY --data-file=-
+```
+
+5. Grant the runtime service account access:
+
+```bash
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:<PROJECT_NUMBER>-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+6. Deploy to Cloud Run:
 
 ```bash
 gcloud run deploy stock-intelligence-copilot \
@@ -290,15 +326,8 @@ gcloud run deploy stock-intelligence-copilot \
   --platform managed \
   --region <REGION> \
   --allow-unauthenticated \
-  --set-env-vars OPENAI_API_KEY=<OPENAI_API_KEY>,ALPHA_VANTAGE_API_KEY=<ALPHA_VANTAGE_API_KEY>
-```
-
-Optional LangSmith variables:
-
-```bash
-gcloud run services update stock-intelligence-copilot \
-  --region <REGION> \
-  --update-env-vars LANGCHAIN_API_KEY=<LANGCHAIN_API_KEY>,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=stock-copilot,BACKEND_CORS_ORIGINS=https://<your-frontend-origin>
+  --set-env-vars BACKEND_CORS_ORIGINS=https://yuni-wyx.github.io,LANGCHAIN_TRACING_V2=false,LANGCHAIN_PROJECT=stock-copilot \
+  --update-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest,ALPHA_VANTAGE_API_KEY=ALPHA_VANTAGE_API_KEY:latest
 ```
 
 You can also use the Makefile helper:
@@ -307,15 +336,16 @@ You can also use the Makefile helper:
 make cloudrun-deploy PROJECT_ID=<PROJECT_ID> REGION=<REGION> SERVICE=stock-intelligence-copilot
 ```
 
-### Frontend Hosting
+Optional LangSmith variables can be added later with:
 
-The current frontend is a dynamic Next.js application and is not configured for static export. Because of that:
+```bash
+printf '%s' '<LANGCHAIN_API_KEY>' | gcloud secrets create LANGCHAIN_API_KEY --data-file=-
 
-- GitHub Pages cannot host the full application as-is
-- The backend must run on Cloud Run or another server environment
-- A frontend-only GitHub Pages deployment would require converting the app to a static export workflow first
-
-If you want a hosted frontend today, use a platform that supports Next.js directly, or deploy the frontend separately from the backend.
+gcloud run services update stock-intelligence-copilot \
+  --region <REGION> \
+  --update-env-vars LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=stock-copilot \
+  --update-secrets LANGCHAIN_API_KEY=LANGCHAIN_API_KEY:latest
+```
 
 ## Demo Screenshots
 
@@ -346,6 +376,7 @@ Check:
 - `backend/.env` exists
 - `OPENAI_API_KEY` is set
 - `ALPHA_VANTAGE_API_KEY` is set
+- `NEXT_PUBLIC_API_BASE_URL` is set for any deployed frontend build
 
 ### CORS issues
 
@@ -358,6 +389,7 @@ Check:
 - backend is running on port `8000`
 - frontend is running on port `3000`
 - `BACKEND_CORS_ORIGINS` includes your deployed frontend origin if you deploy beyond local development
+- for GitHub Pages, set `BACKEND_CORS_ORIGINS=https://yuni-wyx.github.io`
 
 ### Streaming fallback
 
@@ -389,3 +421,9 @@ Check:
 ```bash
 gcloud run services logs read stock-intelligence-copilot --region <REGION>
 ```
+
+## Roadmap
+
+- Add authenticated user accounts and saved portfolios
+- Improve provider redundancy for market data and news
+- Add end-to-end deployment checks for GitHub Pages plus Cloud Run

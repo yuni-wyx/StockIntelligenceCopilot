@@ -3,10 +3,12 @@
 import { createContext, useContext, useMemo, useState } from "react";
 import { Locale, messages } from "@/i18n/messages";
 
+type MessageCatalog = (typeof messages)[Locale];
+
 type LanguageContextType = {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: typeof messages.en;
+  t: MessageCatalog;
 };
 
 const LanguageContext = createContext<LanguageContextType | null>(null);
