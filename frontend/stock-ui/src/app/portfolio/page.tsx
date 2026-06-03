@@ -19,7 +19,7 @@ import {
   type ScenarioResponse,
 } from "@/lib/portfolioApi";
 import { appendHolding } from "@/lib/portfolioState";
-import { normalizeTicker } from "@/lib/tickerMap";
+import { normalizeTicker, tickerDisplayName } from "@/lib/tickerMap";
 
 type ScenarioForm = {
   sellTicker: string;
@@ -59,7 +59,29 @@ type ComparisonPayloadScenario = {
   user_question?: string;
 };
 
-type HoldingValidationField = "ticker" | "shares" | "avg_cost" | "current_price";
+type HoldingValidationField =
+  | "ticker"
+  | "shares"
+  | "avg_cost"
+  | "current_price"
+  | "current_value";
+
+type NumericHoldingField = "avg_cost" | "current_price" | "current_value" | "shares";
+
+type EditableHolding = Omit<HoldingInput, NumericHoldingField> & {
+  _rowId: string;
+  avg_cost?: string;
+  current_price?: string;
+  current_value?: string;
+  shares?: string;
+};
+
+type HoldingDerivedMetrics = {
+  costBasis?: number;
+  currentValue?: number;
+  unrealizedGainLoss?: number;
+  returnPct?: number;
+};
 
 type HoldingValidationMessage = {
   rowIndex: number;
@@ -104,44 +126,144 @@ const secondaryLinkClassName =
 
 const scenarioKindOptions: Array<{
   value: ComparisonScenarioKind;
-  label: string;
-  helper: string;
 }> = [
-  {
-    value: "sell_percentage",
-    label: "Sell X% of ticker",
-    helper: "Model trimming an existing position by percentage.",
-  },
-  {
-    value: "buy_amount",
-    label: "Buy $ amount of ticker",
-    helper: "Model adding a fixed cash amount to a ticker.",
-  },
-  {
-    value: "reduce_concentration",
-    label: "Reduce concentration in ticker",
-    helper: "Model reducing an overweight position by percentage.",
-  },
-  {
-    value: "add_position",
-    label: "Add new ETF/stock",
-    helper: "Model starting a new position with a fixed cash amount.",
-  },
+  { value: "sell_percentage" },
+  { value: "buy_amount" },
+  { value: "reduce_concentration" },
+  { value: "add_position" },
 ];
+
+function createRowId() {
+  return `holding-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function numericInputValue(value: number | string | null | undefined): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  return String(value);
+}
+
+function toEditableHolding(holding: HoldingInput, rowId = createRowId()): EditableHolding {
+  return {
+    ...holding,
+    _rowId: rowId,
+    avg_cost: numericInputValue(holding.avg_cost),
+    current_price: numericInputValue(holding.current_price),
+    current_value: numericInputValue(holding.current_value),
+    shares: numericInputValue(holding.shares),
+  };
+}
+
+function parseOptionalNumber(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === "") {
+    return undefined;
+  }
+  return Number(value);
+}
+
+function payloadNumber(value: string | undefined): number | undefined {
+  const parsed = parseOptionalNumber(value);
+  return parsed === undefined || Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function toApiHolding(holding: EditableHolding): HoldingInput {
+  return {
+    ticker: holding.ticker,
+    name: holding.name || undefined,
+    avg_cost: payloadNumber(holding.avg_cost),
+    current_price: payloadNumber(holding.current_price),
+    current_value: payloadNumber(holding.current_value),
+    shares: payloadNumber(holding.shares),
+    asset_type: holding.asset_type || undefined,
+    category: holding.category || undefined,
+    notes: holding.notes || undefined,
+  };
+}
+
+function scenarioKindLabel(
+  kind: ComparisonScenarioKind,
+  copy: {
+    sellPercentageScenario: string;
+    buyAmountScenario: string;
+    reduceConcentrationScenario: string;
+    addPositionScenario: string;
+  },
+) {
+  return {
+    sell_percentage: copy.sellPercentageScenario,
+    buy_amount: copy.buyAmountScenario,
+    reduce_concentration: copy.reduceConcentrationScenario,
+    add_position: copy.addPositionScenario,
+  }[kind];
+}
+
+function scenarioKindHelper(
+  kind: ComparisonScenarioKind,
+  copy: {
+    sellPercentageScenarioHelper: string;
+    buyAmountScenarioHelper: string;
+    reduceConcentrationScenarioHelper: string;
+    addPositionScenarioHelper: string;
+  },
+) {
+  return {
+    sell_percentage: copy.sellPercentageScenarioHelper,
+    buy_amount: copy.buyAmountScenarioHelper,
+    reduce_concentration: copy.reduceConcentrationScenarioHelper,
+    add_position: copy.addPositionScenarioHelper,
+  }[kind];
+}
+
+function calculateEditableHoldingMetrics(holding: EditableHolding): HoldingDerivedMetrics {
+  const shares = parseOptionalNumber(holding.shares);
+  const avgCost = parseOptionalNumber(holding.avg_cost);
+  const currentPrice = parseOptionalNumber(holding.current_price);
+  const manualCurrentValue = parseOptionalNumber(holding.current_value);
+  const costBasis =
+    shares !== undefined && avgCost !== undefined && !Number.isNaN(shares) && !Number.isNaN(avgCost)
+      ? shares * avgCost
+      : undefined;
+  const calculatedCurrentValue =
+    shares !== undefined &&
+    currentPrice !== undefined &&
+    !Number.isNaN(shares) &&
+    !Number.isNaN(currentPrice)
+      ? shares * currentPrice
+      : undefined;
+  const currentValue =
+    manualCurrentValue !== undefined && !Number.isNaN(manualCurrentValue)
+      ? manualCurrentValue
+      : calculatedCurrentValue;
+  const unrealizedGainLoss =
+    currentValue !== undefined && costBasis !== undefined ? currentValue - costBasis : undefined;
+  const returnPct =
+    unrealizedGainLoss !== undefined && costBasis !== undefined && costBasis > 0
+      ? (unrealizedGainLoss / costBasis) * 100
+      : undefined;
+
+  return {
+    costBasis,
+    currentValue,
+    unrealizedGainLoss,
+    returnPct,
+  };
+}
 
 export default function PortfolioPage() {
   const { t } = useLanguage();
   const ws = t.wealthStudio;
-  const [holdings, setHoldings] = useState<HoldingInput[]>([
-    {
-      ticker: "00878",
-      name: "國泰永續高股息",
-      avg_cost: 21.76,
-      current_price: 32.06,
-      shares: 2239,
-      asset_type: "ETF",
-      category: "High Dividend",
-    },
+  const [holdings, setHoldings] = useState<EditableHolding[]>(() => [
+    toEditableHolding(
+      {
+        ticker: "00878",
+        name: "國泰永續高股息",
+        avg_cost: 21.76,
+        current_price: 32.06,
+        shares: 2239,
+        asset_type: "ETF",
+        category: "High Dividend",
+      },
+      "holding-initial-00878",
+    ),
   ]);
   const [riskProfile, setRiskProfile] = useState("Balanced");
   const [goal, setGoal] = useState(
@@ -177,7 +299,7 @@ export default function PortfolioPage() {
       holdings
         .filter((holding) => holding.ticker?.trim())
         .map((holding) => ({
-          ...holding,
+          ...toApiHolding(holding),
           ticker: normalizeTicker(holding.ticker),
         })),
     [holdings],
@@ -201,14 +323,19 @@ export default function PortfolioPage() {
         fieldKeys.add(`${index}:ticker`);
       }
 
-      if (holding.shares === undefined || Number.isNaN(holding.shares)) {
+      const shares = parseOptionalNumber(holding.shares);
+      const avgCost = parseOptionalNumber(holding.avg_cost);
+      const currentPrice = parseOptionalNumber(holding.current_price);
+      const currentValue = parseOptionalNumber(holding.current_value);
+
+      if (shares === undefined || Number.isNaN(shares)) {
         messages.push({
           rowIndex: index,
           field: "shares",
           message: `${rowLabel}: ${ws.sharesRequired}`,
         });
         fieldKeys.add(`${index}:shares`);
-      } else if (holding.shares <= 0) {
+      } else if (shares <= 0) {
         messages.push({
           rowIndex: index,
           field: "shares",
@@ -217,8 +344,8 @@ export default function PortfolioPage() {
         fieldKeys.add(`${index}:shares`);
       }
 
-      if (holding.avg_cost !== undefined) {
-        if (Number.isNaN(holding.avg_cost) || holding.avg_cost < 0) {
+      if (avgCost !== undefined) {
+        if (Number.isNaN(avgCost) || avgCost < 0) {
           messages.push({
             rowIndex: index,
             field: "avg_cost",
@@ -228,14 +355,25 @@ export default function PortfolioPage() {
         }
       }
 
-      if (holding.current_price !== undefined) {
-        if (Number.isNaN(holding.current_price) || holding.current_price < 0) {
+      if (currentPrice !== undefined) {
+        if (Number.isNaN(currentPrice) || currentPrice < 0) {
           messages.push({
             rowIndex: index,
             field: "current_price",
             message: `${rowLabel}: ${ws.currentPriceNonNegative}`,
           });
           fieldKeys.add(`${index}:current_price`);
+        }
+      }
+
+      if (currentValue !== undefined) {
+        if (Number.isNaN(currentValue) || currentValue < 0) {
+          messages.push({
+            rowIndex: index,
+            field: "current_value",
+            message: `${rowLabel}: ${ws.currentValueNonNegative}`,
+          });
+          fieldKeys.add(`${index}:current_value`);
         }
       }
     });
@@ -264,16 +402,10 @@ export default function PortfolioPage() {
     };
   }
 
-  function updateHolding(index: number, field: keyof HoldingInput, value: string) {
+  function updateHolding(index: number, field: keyof EditableHolding, value: string) {
     setHoldings((prev) =>
       prev.map((holding, currentIndex) => {
         if (currentIndex !== index) return holding;
-        if (["avg_cost", "current_price", "current_value", "shares"].includes(field)) {
-          return {
-            ...holding,
-            [field]: value === "" ? undefined : Number(value),
-          };
-        }
         return {
           ...holding,
           [field]: value,
@@ -283,7 +415,7 @@ export default function PortfolioPage() {
   }
 
   function addHolding() {
-    setHoldings((prev) => appendHolding(prev));
+    setHoldings((prev) => [...prev, toEditableHolding(appendHolding([])[0])]);
   }
 
   function removeHolding(index: number) {
@@ -347,9 +479,7 @@ export default function PortfolioPage() {
       const question = scenarioItem.question.trim();
       const percentage = Number(scenarioItem.percentage);
       const amount = Number(scenarioItem.amount);
-      const actionLabel =
-        scenarioKindOptions.find((option) => option.value === scenarioItem.kind)?.label ??
-        "Scenario";
+      const actionLabel = scenarioKindLabel(scenarioItem.kind, ws);
 
       if (!ticker) {
         errors.push(`${name}: ${ws.scenarioTickerRequired}`);
@@ -459,7 +589,7 @@ export default function PortfolioPage() {
         setError(ws.noSavedCurrent);
         return;
       }
-      setHoldings(record.portfolio.holdings ?? []);
+      setHoldings((record.portfolio.holdings ?? []).map((holding: HoldingInput) => toEditableHolding(holding)));
       setRiskProfile(record.portfolio.risk_profile ?? "Balanced");
       setGoal(record.portfolio.goal ?? "");
       const listed = await listSavedPortfolios();
@@ -661,9 +791,16 @@ export default function PortfolioPage() {
                   />
                 ) : null}
 
-                {holdings.map((holding, index) => (
+                {holdings.map((holding, index) => {
+                  const canonicalTicker = normalizeTicker(holding.ticker);
+                  const displayName = tickerDisplayName(holding.ticker);
+                  const knownDisplayName =
+                    holding.ticker.trim() && displayName !== canonicalTicker ? displayName : "";
+                  const derivedMetrics = calculateEditableHoldingMetrics(holding);
+
+                  return (
                   <div
-                    key={`${holding.ticker}-${index}`}
+                    key={holding._rowId}
                     className="rounded-2xl border border-white/10 bg-black/25 p-4"
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -675,6 +812,11 @@ export default function PortfolioPage() {
                             placeholder="00878 or NVDA"
                             className={holdingInputClass(index, "ticker")}
                           />
+                          {knownDisplayName ? (
+                            <span className="mt-1.5 block text-xs leading-5 text-amber-100/70">
+                              {canonicalTicker} → {knownDisplayName}
+                            </span>
+                          ) : null}
                         </Field>
                         <Field label={ws.name}>
                           <input
@@ -687,6 +829,7 @@ export default function PortfolioPage() {
                           <input
                             value={holding.shares ?? ""}
                             onChange={(e) => updateHolding(index, "shares", e.target.value)}
+                            inputMode="decimal"
                             placeholder="2239"
                             className={holdingInputClass(index, "shares")}
                           />
@@ -695,6 +838,7 @@ export default function PortfolioPage() {
                           <input
                             value={holding.current_price ?? ""}
                             onChange={(e) => updateHolding(index, "current_price", e.target.value)}
+                            inputMode="decimal"
                             placeholder="0 or higher"
                             className={holdingInputClass(index, "current_price")}
                           />
@@ -713,6 +857,7 @@ export default function PortfolioPage() {
                         <input
                           value={holding.avg_cost ?? ""}
                           onChange={(e) => updateHolding(index, "avg_cost", e.target.value)}
+                          inputMode="decimal"
                           placeholder="0 or higher"
                           className={holdingInputClass(index, "avg_cost")}
                         />
@@ -721,7 +866,9 @@ export default function PortfolioPage() {
                         <input
                           value={holding.current_value ?? ""}
                           onChange={(e) => updateHolding(index, "current_value", e.target.value)}
-                          className={inputClassName}
+                          inputMode="decimal"
+                          placeholder={derivedMetrics.currentValue !== undefined ? formatNumber(derivedMetrics.currentValue) : ""}
+                          className={holdingInputClass(index, "current_value")}
                         />
                       </Field>
                       <Field label={ws.assetType} helper={ws.assetTypeHelper}>
@@ -748,8 +895,15 @@ export default function PortfolioPage() {
                         />
                       </Field>
                     </div>
+                    <div className="mt-4 grid gap-3 rounded-xl border border-white/10 bg-black/20 p-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <MiniMetric label={ws.costBasis} value={derivedMetrics.costBasis} />
+                      <MiniMetric label={ws.holdingValue} value={derivedMetrics.currentValue} />
+                      <MiniMetric label={ws.unrealizedPL} value={derivedMetrics.unrealizedGainLoss} />
+                      <MiniMetric label={ws.returnPct} value={derivedMetrics.returnPct} suffix="%" />
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="mt-5 grid gap-3 md:grid-cols-[0.45fr_1fr]">
@@ -1136,9 +1290,6 @@ export default function PortfolioPage() {
               ) : (
                 <div className="mt-4 space-y-4">
                   {comparisonScenarios.map((scenarioItem, index) => {
-                    const selectedKind = scenarioKindOptions.find(
-                      (option) => option.value === scenarioItem.kind,
-                    );
                     const needsPercentage =
                       scenarioItem.kind === "sell_percentage" ||
                       scenarioItem.kind === "reduce_concentration";
@@ -1157,7 +1308,7 @@ export default function PortfolioPage() {
                               {scenarioItem.name.trim() || `Scenario ${index + 1}`}
                             </h3>
                             <p className="mt-1 text-sm leading-6 text-zinc-400">
-                              {selectedKind?.helper}
+                              {scenarioKindHelper(scenarioItem.kind, ws)}
                             </p>
                           </div>
                           <button
@@ -1197,7 +1348,7 @@ export default function PortfolioPage() {
                             >
                               {scenarioKindOptions.map((option) => (
                                 <option key={option.value} value={option.value}>
-                                  {option.label}
+                                  {scenarioKindLabel(option.value, ws)}
                                 </option>
                               ))}
                             </select>
@@ -1230,6 +1381,7 @@ export default function PortfolioPage() {
                                     e.target.value,
                                   )
                                 }
+                                inputMode="decimal"
                                 placeholder="50"
                                 className={inputClassName}
                               />
@@ -1245,6 +1397,7 @@ export default function PortfolioPage() {
                                     e.target.value,
                                   )
                                 }
+                                inputMode="decimal"
                                 placeholder="35000"
                                 className={inputClassName}
                               />
@@ -1410,6 +1563,7 @@ export default function PortfolioPage() {
                       onChange={(e) =>
                         setScenarioForm((prev) => ({ ...prev, sellShares: e.target.value }))
                       }
+                      inputMode="decimal"
                       placeholder="Optional"
                       className={inputClassName}
                     />
@@ -1423,6 +1577,7 @@ export default function PortfolioPage() {
                           sellPercentage: e.target.value,
                         }))
                       }
+                      inputMode="decimal"
                       placeholder="50"
                       className={inputClassName}
                     />
@@ -1444,6 +1599,7 @@ export default function PortfolioPage() {
                     onChange={(e) =>
                       setScenarioForm((prev) => ({ ...prev, buyAmount: e.target.value }))
                     }
+                    inputMode="decimal"
                     placeholder="35000"
                     className={inputClassName}
                   />
@@ -1606,6 +1762,26 @@ function InsightStat({
         {formatNumber(value)}
       </div>
       <p className="mt-2 text-xs leading-5 text-zinc-500">{helper}</p>
+    </div>
+  );
+}
+
+function MiniMetric({
+  label,
+  value,
+  suffix = "",
+}: {
+  label: string;
+  value: number | null | undefined;
+  suffix?: string;
+}) {
+  return (
+    <div>
+      <div className="text-xs text-zinc-500">{label}</div>
+      <div className="mt-1 break-words text-sm font-medium tabular-nums text-zinc-200">
+        {formatNumber(value)}
+        {suffix}
+      </div>
     </div>
   );
 }
