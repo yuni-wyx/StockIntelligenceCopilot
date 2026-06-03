@@ -992,8 +992,8 @@ export default function PortfolioPage() {
                   </p>
                 </div>
                 {analysis ? (
-                  <Badge tone={scoreTone(analysis.overall_score)}>
-                    {scoreLabel(analysis.overall_score, ws)}
+                  <Badge tone={qualitativeTone(analysis.overall_score)}>
+                    {qualitativeLevel(analysis.overall_score, ws)}
                   </Badge>
                 ) : null}
               </div>
@@ -1029,25 +1029,28 @@ export default function PortfolioPage() {
                           </p>
                         </div>
                         <div className="text-left sm:text-right">
-                          <div className="text-4xl font-semibold tabular-nums">
-                            {formatNumber(analysis.overall_score)}
+                          <div className="text-3xl font-semibold">
+                            {qualitativeLevel(analysis.overall_score, ws)}
                           </div>
-                          <Badge tone={scoreTone(analysis.overall_score)}>
-                            {scoreLabel(analysis.overall_score, ws)}
+                          <Badge tone="neutral">
+                            {ws.heuristicEstimate}
                           </Badge>
                         </div>
                       </div>
 
                       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                        <ScoreRow label={ws.diversification} value={analysis.diversification_score} />
-                        <ScoreRow label={ws.concentration} value={analysis.concentration_score} />
-                        <ScoreRow label={ws.income} value={analysis.income_score} />
-                        <ScoreRow label={ws.defensive} value={analysis.defensive_score} />
-                        <ScoreRow label={ws.growth} value={analysis.growth_score} />
+                        <SnapshotRow label={ws.diversification} level={qualitativeLevel(analysis.diversification_score, ws)} />
+                        <SnapshotRow label={ws.concentration} level={concentrationLevel(analysis.concentration_score, ws)} />
+                        <SnapshotRow label={ws.income} level={qualitativeLevel(analysis.income_score, ws)} />
+                        <SnapshotRow label={ws.defensive} level={qualitativeLevel(analysis.defensive_score, ws)} />
+                        <SnapshotRow label={ws.growth} level={qualitativeLevel(analysis.growth_score, ws)} />
                       </div>
 
                       <p className="mt-5 text-sm leading-6 text-zinc-300">
                         {analysis.summary}
+                      </p>
+                      <p className="mt-3 rounded-xl border border-amber-200/20 bg-amber-200/10 px-4 py-3 text-xs leading-5 text-amber-100/85">
+                        {ws.heuristicDisclaimer}
                       </p>
                     </div>
 
@@ -1061,6 +1064,17 @@ export default function PortfolioPage() {
                         label={ws.unrealizedPL}
                         value={analysis.total_unrealized_gain_loss}
                         helper={`${formatNumber(analysis.total_return_pct)}% ${ws.totalReturn}`}
+                      />
+                      <InsightStat
+                        label={ws.costBasis}
+                        value={analysis.total_cost_basis}
+                        helper={ws.totalCostHelper}
+                      />
+                      <InsightStat
+                        label={ws.returnPct}
+                        value={analysis.total_return_pct}
+                        suffix="%"
+                        helper={ws.totalReturn}
                       />
                       <InsightStat
                         label={ws.annualDividend}
@@ -1161,7 +1175,8 @@ export default function PortfolioPage() {
                         <div className="grid gap-3 sm:grid-cols-2">
                           <InsightStat
                             label={ws.incomeScore}
-                            value={analysis.income_score}
+                            value={undefined}
+                            displayValue={qualitativeLevel(analysis.income_score, ws)}
                             helper={ws.incomeScoreHelper}
                           />
                           <InsightStat
@@ -1212,6 +1227,8 @@ export default function PortfolioPage() {
                       )}
                     </div>
                   </div>
+
+                  <EvidenceProvenancePanel analysis={analysis} copy={ws} />
 
                   <details className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <summary className="cursor-pointer text-sm font-semibold text-zinc-200">
@@ -1750,16 +1767,21 @@ function InsightStat({
   label,
   value,
   helper,
+  suffix = "",
+  displayValue,
 }: {
   label: string;
   value: number | null | undefined;
   helper: string;
+  suffix?: string;
+  displayValue?: string;
 }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
       <div className="text-sm text-zinc-400">{label}</div>
       <div className="mt-2 break-words text-2xl font-semibold tabular-nums">
-        {formatNumber(value)}
+        {displayValue ?? formatNumber(value)}
+        {displayValue ? "" : suffix}
       </div>
       <p className="mt-2 text-xs leading-5 text-zinc-500">{helper}</p>
     </div>
@@ -1786,20 +1808,12 @@ function MiniMetric({
   );
 }
 
-function ScoreRow({ label, value }: { label: string; value: number | null | undefined }) {
-  const numericValue = typeof value === "number" && !Number.isNaN(value) ? value : 0;
-
+function SnapshotRow({ label, level }: { label: string; level: string }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-3">
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="text-zinc-300">{label}</span>
-        <span className="font-medium tabular-nums">{formatNumber(value)}</span>
-      </div>
-      <div className="mt-2 h-2 rounded-full bg-white/10">
-        <div
-          className="h-2 rounded-full bg-amber-100"
-          style={{ width: `${Math.max(0, Math.min(numericValue, 100))}%` }}
-        />
+        <Badge tone="neutral">{level}</Badge>
       </div>
     </div>
   );
@@ -1926,6 +1940,85 @@ function ListCard({
   );
 }
 
+function EvidenceProvenancePanel({
+  analysis,
+  copy,
+}: {
+  analysis: PortfolioAnalysisResponse;
+  copy: {
+    evidenceProvenance: string;
+    evidenceProvenanceHelper: string;
+    evidenceSources: string;
+    claimLinks: string;
+    unsupportedClaims: string;
+    noUnsupportedClaims: string;
+    confidence: string;
+  };
+}) {
+  const sources = analysis.evidence_provenance ?? [];
+  const claimLinks = analysis.claim_evidence ?? [];
+  const unsupportedClaims = analysis.unsupported_claims ?? [];
+
+  return (
+    <details className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-zinc-200">
+        {copy.evidenceProvenance}
+      </summary>
+      <p className="mt-2 text-sm leading-6 text-zinc-500">
+        {copy.evidenceProvenanceHelper}
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <MetricCard label={copy.evidenceSources} value={sources.length} />
+        <MetricCard label={copy.claimLinks} value={claimLinks.length} />
+        <MetricCard
+          label={copy.confidence}
+          value={analysis.confidence_score !== undefined ? analysis.confidence_score * 100 : undefined}
+          suffix="%"
+        />
+      </div>
+      {unsupportedClaims.length > 0 ? (
+        <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/10 p-3">
+          <div className="text-sm font-medium text-amber-100">{copy.unsupportedClaims}</div>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-100/80">
+            {unsupportedClaims.slice(0, 4).map((claim) => (
+              <li key={`${claim.output_field}-${claim.reason}`} className="break-words">
+                {claim.output_field}: {claim.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-zinc-400">{copy.noUnsupportedClaims}</p>
+      )}
+      {sources.length > 0 ? (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {sources.slice(0, 6).map((source) => (
+            <div key={source.source_id} className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm">
+              <div className="font-medium text-zinc-200">
+                {source.source_type}
+                {source.ticker ? ` · ${source.ticker}` : ""}
+              </div>
+              <div className="mt-1 break-words text-zinc-400">
+                {source.title || source.provider || source.source_id}
+              </div>
+              {source.url ? (
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-block break-all text-xs text-amber-100 hover:text-white"
+                >
+                  {source.url}
+                </a>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </details>
+  );
+}
+
 function InfoPanel({ title, body }: { title: string; body: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
@@ -1945,7 +2038,7 @@ function formatNumber(value: number | null | undefined): string {
   }).format(value);
 }
 
-function scoreTone(value: number | null | undefined): "good" | "warning" | "danger" | "neutral" {
+function qualitativeTone(value: number | null | undefined): "good" | "warning" | "danger" | "neutral" {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "neutral";
   }
@@ -1954,19 +2047,36 @@ function scoreTone(value: number | null | undefined): "good" | "warning" | "dang
   return "danger";
 }
 
-function scoreLabel(
+function qualitativeLevel(
   value: number | null | undefined,
   copy: {
-    healthy: string;
-    needsReview: string;
-    highAttention: string;
+    low: string;
+    moderate: string;
+    high: string;
     notScored: string;
   },
 ): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return copy.notScored;
   }
-  if (value >= 75) return copy.healthy;
-  if (value >= 50) return copy.needsReview;
-  return copy.highAttention;
+  if (value >= 75) return copy.high;
+  if (value >= 50) return copy.moderate;
+  return copy.low;
+}
+
+function concentrationLevel(
+  value: number | null | undefined,
+  copy: {
+    low: string;
+    moderate: string;
+    high: string;
+    notScored: string;
+  },
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return copy.notScored;
+  }
+  if (value >= 75) return copy.low;
+  if (value >= 50) return copy.moderate;
+  return copy.high;
 }

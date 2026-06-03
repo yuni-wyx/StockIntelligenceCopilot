@@ -1,17 +1,10 @@
 # ruff: noqa: E402
 from __future__ import annotations
 
-import os
 import sys
-from pathlib import Path
 from typing import Any, List
 
-from dotenv import load_dotenv
-
-# Load env BEFORE importing chains/tools that may need env vars.
-load_dotenv(Path(__file__).resolve().parent / ".env")
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from rich import box
@@ -22,34 +15,79 @@ from rich.table import Table
 
 if __package__:
     from . import compat as compat  # noqa: F401
-    from .api.presentation import build_sse_response, error_output, serialize_output
+    from .api.agent_presentation import (
+        agent_exception_to_api_response,
+        agent_result_to_api_response,
+    )
+    from .api.agent_streaming import build_agent_streaming_response
+    from .api.presentation import serialize_output
+    from .config import BACKEND_CORS_ORIGINS
+    from .pipeline.agent_runtime import execute_agent_task, stream_agent_task
     from .pipeline.orchestrator import execute_pipeline, stream_pipeline_events
+    from .pipeline.route_adapters import (
+        explain_request_to_agent_task,
+        portfolio_agent_request_to_agent_task,
+        portfolio_compare_request_to_agent_task,
+        portfolio_request_to_agent_task,
+        portfolio_scenario_request_to_agent_task,
+        research_request_to_agent_task,
+        trade_request_to_agent_task,
+        watchlist_request_to_agent_task,
+    )
     from .schemas.output_schema import (
         PriceMovementOutput,
         StockResearchOutput,
         TradingDecisionOutput,
         WatchlistMonitorOutput,
     )
+    from .schemas.portfolio import (
+        PortfolioAgentRequest,
+        PortfolioRequest,
+        PortfolioSaveRequest,
+        ScenarioComparisonRequest,
+        ScenarioRequest,
+    )
+    from .services.portfolio_store import PortfolioStore
     from .symbols import normalize_symbol
 else:
     import compat as compat  # noqa: F401
-    from api.presentation import build_sse_response, error_output, serialize_output
+    from api.agent_presentation import (
+        agent_exception_to_api_response,
+        agent_result_to_api_response,
+    )
+    from api.agent_streaming import build_agent_streaming_response
+    from api.presentation import serialize_output
+    from config import BACKEND_CORS_ORIGINS
+    from pipeline.agent_runtime import execute_agent_task, stream_agent_task
     from pipeline.orchestrator import execute_pipeline, stream_pipeline_events
+    from pipeline.route_adapters import (
+        explain_request_to_agent_task,
+        portfolio_agent_request_to_agent_task,
+        portfolio_compare_request_to_agent_task,
+        portfolio_request_to_agent_task,
+        portfolio_scenario_request_to_agent_task,
+        research_request_to_agent_task,
+        trade_request_to_agent_task,
+        watchlist_request_to_agent_task,
+    )
     from schemas.output_schema import (
         PriceMovementOutput,
         StockResearchOutput,
         TradingDecisionOutput,
         WatchlistMonitorOutput,
     )
+    from schemas.portfolio import (
+        PortfolioAgentRequest,
+        PortfolioRequest,
+        PortfolioSaveRequest,
+        ScenarioComparisonRequest,
+        ScenarioRequest,
+    )
+    from services.portfolio_store import PortfolioStore
     from symbols import normalize_symbol
 
 console = Console(width=110)
-
-
-def _cors_origins_from_env() -> list[str]:
-    raw = os.getenv("BACKEND_CORS_ORIGINS", "http://localhost:3000")
-    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return origins or ["http://localhost:3000"]
+portfolio_store = PortfolioStore()
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
@@ -58,7 +96,7 @@ app = FastAPI(title="Stock Intelligence Copilot")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins_from_env(),
+    allow_origins=BACKEND_CORS_ORIGINS or ["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -88,71 +126,151 @@ def root() -> dict:
     return {"message": "Stock Intelligence Copilot API is running."}
 
 
+def _execute_runtime_route(task, *, allow_legacy_fallback: bool = True) -> Any:
+    try:
+        result = execute_agent_task(task, store=portfolio_store)
+        return agent_result_to_api_response(result)
+    except Exception as runtime_exc:
+        if not allow_legacy_fallback:
+            return agent_exception_to_api_response(task, runtime_exc)
+
+        raw_query = task.raw_query or ""
+        try:
+            output = execute_pipeline(raw_query)
+            return serialize_output(output)
+        except Exception as fallback_exc:
+            status_code = (
+                502
+                if isinstance(fallback_exc, (ConnectionError, TimeoutError))
+                else None
+            )
+            return agent_exception_to_api_response(
+                task,
+                runtime_exc,
+                status_code=status_code,
+            )
+
+
 @app.post("/api/research")
 def api_research(req: ResearchRequest) -> dict:
-    raw_query = f"research {normalize_symbol(req.ticker)}"
-    try:
-        output = execute_pipeline(raw_query)
-        return serialize_output(output)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return error_output(raw_query, e)
+    task = research_request_to_agent_task(req)
+    return _execute_runtime_route(task)
 
 
 @app.post("/api/explain")
 def api_explain(req: ExplainRequest) -> dict:
-    raw_query = f"explain {normalize_symbol(req.ticker)}"
-    try:
-        output = execute_pipeline(raw_query)
-        return serialize_output(output)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return error_output(raw_query, e)
+    task = explain_request_to_agent_task(req)
+    return _execute_runtime_route(task)
 
 
 @app.post("/api/watchlist")
 def api_watchlist(req: WatchlistRequest) -> dict:
-    tickers_str = " ".join(normalize_symbol(t) for t in req.tickers)
-    raw_query = f"watchlist {tickers_str}"
-    try:
-        output = execute_pipeline(raw_query)
-        return serialize_output(output)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return error_output(raw_query, e)
+    task = watchlist_request_to_agent_task(req)
+    return _execute_runtime_route(task)
 
 
 @app.post("/api/trade")
 def api_trade(req: TradeRequest) -> dict:
-    raw_query = f"trade {normalize_symbol(req.ticker)}"
-    try:
-        output = execute_pipeline(raw_query)
-        return serialize_output(output)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return error_output(raw_query, e)
+    task = trade_request_to_agent_task(req)
+    return _execute_runtime_route(task)
 
 
 @app.post("/api/research/stream")
-def api_research_stream(req: ResearchRequest):
-    raw_query = f"research {normalize_symbol(req.ticker)}"
-    return build_sse_response(raw_query, stream_pipeline_events)
+def api_research_stream(req: ResearchRequest, request: Request):
+    task = research_request_to_agent_task(req)
+    return build_agent_streaming_response(
+        task,
+        stream_agent_task,
+        legacy_raw_query=task.raw_query or f"research {normalize_symbol(req.ticker)}",
+        legacy_event_source=stream_pipeline_events,
+        request=request,
+    )
 
 
 @app.post("/api/explain/stream")
-def api_explain_stream(req: ExplainRequest):
-    raw_query = f"explain {normalize_symbol(req.ticker)}"
-    return build_sse_response(raw_query, stream_pipeline_events)
+def api_explain_stream(req: ExplainRequest, request: Request):
+    task = explain_request_to_agent_task(req)
+    return build_agent_streaming_response(
+        task,
+        stream_agent_task,
+        legacy_raw_query=task.raw_query or f"explain {normalize_symbol(req.ticker)}",
+        legacy_event_source=stream_pipeline_events,
+        request=request,
+    )
 
 
 @app.post("/api/trade/stream")
-def api_trade_stream(req: TradeRequest):
-    raw_query = f"trade {normalize_symbol(req.ticker)}"
-    return build_sse_response(raw_query, stream_pipeline_events)
+def api_trade_stream(req: TradeRequest, request: Request):
+    task = trade_request_to_agent_task(req)
+    return build_agent_streaming_response(
+        task,
+        stream_agent_task,
+        legacy_raw_query=task.raw_query or f"trade {normalize_symbol(req.ticker)}",
+        legacy_event_source=stream_pipeline_events,
+        request=request,
+    )
+
+
+@app.post("/api/portfolio/analyze")
+def api_portfolio_analyze(req: PortfolioRequest) -> dict:
+    task = portfolio_request_to_agent_task(req)
+    return _execute_runtime_route(task, allow_legacy_fallback=False)
+
+
+@app.post("/api/portfolio/scenario")
+def api_portfolio_scenario(req: ScenarioRequest) -> dict:
+    task = portfolio_scenario_request_to_agent_task(req)
+    return _execute_runtime_route(task, allow_legacy_fallback=False)
+
+
+@app.post("/api/portfolio/scenarios/compare")
+def api_portfolio_scenarios_compare(req: ScenarioComparisonRequest) -> dict:
+    task = portfolio_compare_request_to_agent_task(req)
+    return _execute_runtime_route(task, allow_legacy_fallback=False)
+
+
+@app.post("/api/portfolio/agent")
+def api_portfolio_agent(req: PortfolioAgentRequest) -> dict:
+    task = portfolio_agent_request_to_agent_task(req)
+    return _execute_runtime_route(task, allow_legacy_fallback=False)
+
+
+@app.post("/api/portfolio/save")
+def api_portfolio_save(req: PortfolioSaveRequest) -> dict:
+    record = portfolio_store.save_portfolio(req.portfolio, name=req.name)
+    if req.make_current and req.name != "current":
+        portfolio_store.save_portfolio(req.portfolio, name="current")
+    return serialize_output(record)
+
+
+@app.get("/api/portfolio/current")
+def api_portfolio_current() -> dict:
+    record = portfolio_store.load_portfolio("current")
+    if record is None:
+        return {"portfolio": None}
+    return serialize_output(record)
+
+
+@app.put("/api/portfolio/current")
+def api_portfolio_update(req: PortfolioRequest) -> dict:
+    record = portfolio_store.update_portfolio(req, name="current")
+    return serialize_output(record)
+
+
+@app.delete("/api/portfolio/current")
+def api_portfolio_delete() -> dict:
+    deleted = portfolio_store.delete_portfolio("current")
+    return {"deleted": deleted}
+
+
+@app.get("/api/portfolio/list")
+def api_portfolio_list() -> dict:
+    return {
+        "portfolios": [
+            item.model_dump(mode="json")
+            for item in portfolio_store.list_saved_portfolios()
+        ]
+    }
 
 
 # ── CLI renderer path (streaming UI) ─────────────────────────────────────────

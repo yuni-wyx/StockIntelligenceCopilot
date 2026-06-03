@@ -5,7 +5,7 @@ const isGitHubPages = process.env.GITHUB_ACTIONS === "true";
 const repoName = "StockIntelligenceCopilot";
 
 const nextConfig: NextConfig = {
-  reactCompiler: true,
+  reactCompiler: false,
   turbopack: {
     root: path.resolve(__dirname),
   },

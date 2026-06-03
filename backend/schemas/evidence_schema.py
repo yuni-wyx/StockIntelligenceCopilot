@@ -7,7 +7,7 @@ ready to be consumed by the Synthesis Chain.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,54 @@ class ToolResult(BaseModel):
         default_factory=dict,
         description="Tool payload (structure varies by tool).",
     )
+
+
+class SourceMetadata(BaseModel):
+    """Provenance metadata for a source used by generated insights."""
+
+    source_id: str
+    source_type: Literal[
+        "market_data",
+        "news",
+        "filing",
+        "fundamentals",
+        "analyst_signal",
+        "earnings",
+        "portfolio_input",
+        "portfolio_metric",
+        "other",
+    ]
+    ticker: str | None = None
+    provider: str | None = None
+    title: str | None = None
+    url: str | None = None
+    published_at: str | None = None
+    retrieved_at: str | None = None
+    tool: str | None = None
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    fields: list[str] = Field(default_factory=list)
+
+
+class ClaimEvidence(BaseModel):
+    """A generated output claim linked back to one or more evidence sources."""
+
+    claim_id: str
+    output_field: str
+    claim: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    confidence_label: Literal["LOW", "MEDIUM", "HIGH"] = "LOW"
+    unsupported: bool = False
+    notes: list[str] = Field(default_factory=list)
+
+
+class UnsupportedClaim(BaseModel):
+    """A generated claim that lacks evidence or uses unsafe certainty."""
+
+    output_field: str
+    claim: str
+    reason: str
+    severity: Literal["low", "medium", "high"] = "medium"
     error: Optional[str] = Field(
         None,
         description="Error message if success=False.",
@@ -39,6 +87,9 @@ class TickerEvidence(BaseModel):
     fundamentals: Optional[Dict[str, Any]] = None
     news: Optional[List[Dict[str, Any]]] = None
     earnings: Optional[Dict[str, Any]] = None
+    source_metadata: List[SourceMetadata] = Field(default_factory=list)
+    claim_evidence: List[ClaimEvidence] = Field(default_factory=list)
+    unsupported_claims: List[UnsupportedClaim] = Field(default_factory=list)
     tool_errors: List[str] = Field(
         default_factory=list,
         description="Any tool errors encountered during evidence collection.",
@@ -72,6 +123,10 @@ class AggregatedEvidence(BaseModel):
     )
     total_tool_calls: int = Field(..., description="Total number of tool calls made.")
     successful_calls: int = Field(..., description="Number of successful tool calls.")
+    source_metadata: List[SourceMetadata] = Field(default_factory=list)
+    claim_evidence: List[ClaimEvidence] = Field(default_factory=list)
+    unsupported_claims: List[UnsupportedClaim] = Field(default_factory=list)
+    confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
 
     @property
     def success_rate(self) -> float:

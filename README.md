@@ -1,14 +1,15 @@
 # Stock Intelligence Copilot
 
-Stock Intelligence Copilot is a full-stack equity analysis app with a FastAPI backend and a Next.js frontend. It supports research, price-move explanation, trade setup generation, watchlist monitoring, live reasoning timelines, and both US and Taiwan stock inputs.
+Stock Intelligence Copilot is a full-stack equity and portfolio intelligence app with a FastAPI backend and a Next.js frontend. It supports ticker research, price-move explanation, trade setup generation, watchlist monitoring, personal portfolio analysis, scenario simulation, live reasoning timelines, and both US and Taiwan market inputs.
 
 ## Overview
 
 The project combines:
 
-- A modular backend pipeline for query interpretation, planning, evidence retrieval, synthesis, and API presentation
+- A modular backend agent runtime for task interpretation, planning, tool routing, evidence building, synthesis, and API presentation
 - A frontend copilot UI with live streaming updates and graceful fallback when SSE is unavailable
-- Support for US symbols such as `NVDA` and Taiwan inputs such as `2330`, `2330.TW`, and `台積電`
+- Support for US symbols such as `NVDA` and Taiwan inputs such as `2330`, `00878`, `00687B`, `2330.TW`, and `台積電`
+- A deterministic portfolio calculator plus portfolio scenario analysis layer
 
 ## Architecture
 
@@ -16,20 +17,52 @@ The project combines:
 flowchart LR
     U["User"] --> F["Next.js Frontend"]
     F --> A["FastAPI API"]
-    A --> P["Planning Layer"]
-    P --> R["Evidence Retrieval Layer"]
-    R --> S["Synthesis Layer"]
+    A --> AR["Unified Agent Runtime"]
+    AR --> P["Planner"]
+    P --> TR["Tool Router"]
+    TR --> T["Tools / Services"]
+    T --> EB["Evidence Bundle"]
+    EB --> S["Synthesis"]
     S --> AP["API Presentation Layer"]
     AP --> F
 ```
 
 Backend responsibilities are intentionally separated:
 
+- `backend/pipeline/agent_runtime.py`: unified task execution contract for ticker and portfolio tasks
 - `backend/pipeline/planning.py`: query interpretation and execution planning
 - `backend/pipeline/retrieval.py`: tool routing and evidence aggregation
-- `backend/pipeline/synthesis.py`: final answer generation
+- `backend/pipeline/synthesis.py`: unified synthesis entrypoint plus legacy ticker synthesis
 - `backend/pipeline/orchestrator.py`: end-to-end execution and streaming events
 - `backend/api/presentation.py`: safe JSON/SSE presentation and fallback shaping
+
+## Unified Runtime Migration Status
+
+Non-streaming routes:
+- research: runtime
+- explain: runtime
+- trade: runtime
+- watchlist: runtime
+- portfolio: runtime
+
+Streaming routes:
+- research: runtime streaming adapter
+- explain: runtime streaming adapter
+- trade: runtime streaming adapter
+- watchlist: no public stream route
+
+The runtime streaming adapter currently emits compatibility-focused milestones that preserve the existing SSE event contract for the frontend. Deeper tool-level or step-by-step runtime streaming can be expanded later without changing the public streaming routes.
+
+The current runtime supports these task types through a shared contract:
+
+- research
+- explain
+- trade
+- watchlist
+- portfolio_analysis
+- portfolio_scenario
+- portfolio_scenarios_compare
+- portfolio_agent
 
 ## Key Features
 
@@ -37,6 +70,9 @@ Backend responsibilities are intentionally separated:
 - Explain workflow for price-move attribution with ranked drivers
 - Trade workflow for structured setup generation
 - Watchlist workflow for multi-symbol monitoring
+- Portfolio workflow for holdings analysis and reallocation scenarios
+- Portfolio persistence for local single-user demo mode
+- Portfolio agent recommendations backed by deterministic metrics plus tool evidence
 - Taiwan stock normalization and market detection
 - Structured reasoning timeline in the UI without exposing hidden chain-of-thought
 - Streaming backend events with graceful fallback to standard responses
@@ -45,6 +81,7 @@ Backend responsibilities are intentionally separated:
 
 - US symbols: `NVDA`, `AAPL`, `TSLA`
 - Taiwan numeric codes: `2330`, `2317`, `2454`
+- Taiwan ETF / fund codes: `00878`, `00687B`
 - Taiwan Yahoo Finance symbols: `2330.TW`, `2317.TW`, `2454.TW`
 - Taiwan company names and aliases: `台積電`, `鴻海`, `聯發科`, `TSMC`, `Foxconn`, `MediaTek`
 
@@ -70,6 +107,8 @@ stock_intelligence_copilot/
 │   └── main.py
 ├── frontend/stock-ui/
 ├── tests/
+├── AGENTS.md
+├── SKILL.md
 ├── .github/workflows/ci.yml
 ├── Dockerfile
 ├── Makefile
@@ -103,6 +142,14 @@ Optional:
 - `BACKEND_CORS_ORIGINS`
 - `ENABLE_LLM_TRADE_SYNTHESIS`
 
+For deployed frontends, set the backend origin explicitly:
+
+```bash
+NEXT_PUBLIC_BACKEND_BASE_URL=https://your-backend.example.com
+```
+
+The frontend app appends `/api` internally.
+
 ## Trade Synthesis Modes
 
 Trade mode uses deterministic synthesis by default for production and demo reliability. This is the recommended setting because it does not depend on an external LLM/provider call.
@@ -114,6 +161,24 @@ ENABLE_LLM_TRADE_SYNTHESIS=true
 ```
 
 Use `ENABLE_LLM_TRADE_SYNTHESIS=false` for the stable default. Treat the LLM trade path as optional and experimental.
+
+## Product Modes
+
+### Research Mode
+
+- Analyze any supported US/TW stock, ETF, or fund by ticker
+- Explain price moves
+- Generate trade setups
+- Monitor watchlists
+
+### Portfolio Mode
+
+- Input holdings with ticker, cost, shares, value, category, and notes
+- Calculate unrealized P/L, dividend estimates, and allocation weights
+- Review concentration and defensive allocation risk
+- Run sell/buy reallocation scenarios and compare before vs after
+- Save and reload a local demo portfolio
+- Ask a portfolio agent grounded questions about reallocation ideas
 
 ## Local Setup
 
@@ -160,14 +225,33 @@ make install-backend
 ./.venv/bin/python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Key routes:
+
+- `POST /api/research`
+- `POST /api/explain`
+- `POST /api/trade`
+- `POST /api/watchlist`
+- `POST /api/portfolio/analyze`
+- `POST /api/portfolio/scenario`
+- `POST /api/portfolio/scenarios/compare`
+- `POST /api/portfolio/agent`
+- `POST /api/portfolio/save`
+- `GET /api/portfolio/current`
+- `PUT /api/portfolio/current`
+- `DELETE /api/portfolio/current`
+- `GET /api/portfolio/list`
+
 ### Frontend
+
+Before opening the frontend in a browser, read the local memory-safe workflow in
+[Local Development Troubleshooting](docs/local-dev-troubleshooting.md).
 
 ```bash
 cd frontend/stock-ui
 npm run dev
 ```
 
-Open:
+After curl checks pass, open:
 
 - Frontend: [http://localhost:3000](http://localhost:3000)
 - Backend docs: [http://localhost:8000/docs](http://localhost:8000/docs)
@@ -224,6 +308,34 @@ Both:
 ```bash
 make lint
 ```
+
+## Financial Disclaimer
+
+This project provides analysis, scenario comparison, and portfolio intelligence support. It does not provide guaranteed outcomes or personalized regulated investment advice. Missing data, estimated dividends, and market tool gaps should be reviewed before making real capital allocation decisions.
+
+## Portfolio Health Score
+
+Portfolio mode includes heuristic health scoring:
+
+- `overall_score`
+- `diversification_score`
+- `concentration_score`
+- `income_score`
+- `defensive_score`
+- `growth_score`
+
+These scores are deterministic and useful for comparison, but they are not objective investment ratings.
+
+## Exposure Heuristic Limitations
+
+Theme, category, market, and defensive labels are heuristic. They are designed to be easy to extend and useful for portfolio review, but they do not replace a full holdings look-through system for every ETF or fund.
+
+## Example Portfolio Questions
+
+- Should I sell part of 00878 and move into a Taiwan technology fund?
+- How much annual dividend would I lose if I sell half of my income ETF?
+- Is my portfolio too concentrated in AI / technology?
+- Which losing positions deserve review first?
 
 ## Docker
 

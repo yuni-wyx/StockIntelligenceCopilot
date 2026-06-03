@@ -13,6 +13,13 @@ if str(ROOT) not in sys.path:
 class ExplainFlowRegressionTest(unittest.TestCase):
     def test_api_explain_works_via_package_import(self) -> None:
         from backend.main import ExplainRequest, api_explain
+        from backend.schemas.agent import (
+            AgentEvidenceBundle,
+            AgentPlan,
+            AgentResult,
+            AgentTask,
+            AgentTaskType,
+        )
         from backend.schemas.output_schema import PriceMovementOutput, RankedCause, WatchPoint
 
         mocked_output = PriceMovementOutput(
@@ -40,10 +47,27 @@ class ExplainFlowRegressionTest(unittest.TestCase):
             ],
         )
 
-        with patch("backend.main.execute_pipeline", return_value=mocked_output) as execute_mock:
+        mocked_result = AgentResult(
+            task=AgentTask(
+                task_type=AgentTaskType.EXPLAIN,
+                raw_query="explain TSLA",
+                tickers=["TSLA"],
+            ),
+            plan=AgentPlan(
+                task_type=AgentTaskType.EXPLAIN,
+                summary="Explain TSLA",
+                expected_outputs=["price_move_summary"],
+            ),
+            evidence=AgentEvidenceBundle(context={"raw_query": "explain TSLA"}),
+            output=mocked_output,
+            output_type="PriceMovementOutput",
+        )
+
+        with patch("backend.main.execute_agent_task", return_value=mocked_result) as execute_mock:
             response = api_explain(ExplainRequest(ticker="tsla"))
 
-        execute_mock.assert_called_once_with("explain TSLA")
+        task = execute_mock.call_args.args[0]
+        self.assertEqual(task.raw_query, "explain TSLA")
         self.assertEqual(response["ticker"], "TSLA")
         self.assertEqual(response["price_move_summary"], mocked_output.price_move_summary)
         self.assertEqual(response["ranked_causes"][0]["cause"], "News catalyst")
@@ -51,6 +75,13 @@ class ExplainFlowRegressionTest(unittest.TestCase):
 
     def test_api_explain_normalizes_taiwan_aliases(self) -> None:
         from backend.main import ExplainRequest, api_explain
+        from backend.schemas.agent import (
+            AgentEvidenceBundle,
+            AgentPlan,
+            AgentResult,
+            AgentTask,
+            AgentTaskType,
+        )
         from backend.schemas.output_schema import PriceMovementOutput
 
         mocked_output = PriceMovementOutput(
@@ -63,10 +94,27 @@ class ExplainFlowRegressionTest(unittest.TestCase):
             what_to_watch_next=[],
         )
 
-        with patch("backend.main.execute_pipeline", return_value=mocked_output) as execute_mock:
+        mocked_result = AgentResult(
+            task=AgentTask(
+                task_type=AgentTaskType.EXPLAIN,
+                raw_query="explain 2330.TW",
+                tickers=["2330.TW"],
+            ),
+            plan=AgentPlan(
+                task_type=AgentTaskType.EXPLAIN,
+                summary="Explain 2330.TW",
+                expected_outputs=["price_move_summary"],
+            ),
+            evidence=AgentEvidenceBundle(context={"raw_query": "explain 2330.TW"}),
+            output=mocked_output,
+            output_type="PriceMovementOutput",
+        )
+
+        with patch("backend.main.execute_agent_task", return_value=mocked_result) as execute_mock:
             response = api_explain(ExplainRequest(ticker="台積電"))
 
-        execute_mock.assert_called_once_with("explain 2330.TW")
+        task = execute_mock.call_args.args[0]
+        self.assertEqual(task.raw_query, "explain 2330.TW")
         self.assertEqual(response["ticker"], "2330.TW")
 
 

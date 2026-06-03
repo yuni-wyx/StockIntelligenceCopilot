@@ -18,13 +18,13 @@ Trade mode uses an LLM to produce a structured trading decision.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime
 from typing import Any, List, Tuple
 
 from langchain_core.runnables import RunnableLambda
 
 try:
+    from ..config import llm_trade_synthesis_enabled
     from ..schemas.evidence_schema import AggregatedEvidence
     from ..schemas.intent_schema import AnalysisMode
     from ..schemas.output_schema import (
@@ -38,6 +38,7 @@ try:
     )
     from ..schemas.planner_schema import ExecutionPlan
 except ImportError:
+    from config import llm_trade_synthesis_enabled
     from schemas.evidence_schema import AggregatedEvidence
     from schemas.intent_schema import AnalysisMode
     from schemas.output_schema import (
@@ -98,7 +99,7 @@ def _safe_confidence_int(value: Any) -> int:
 
 
 def _llm_trade_synthesis_enabled() -> bool:
-    return os.getenv("ENABLE_LLM_TRADE_SYNTHESIS", "").strip().lower() in {"1", "true", "yes", "on"}
+    return llm_trade_synthesis_enabled()
 
 
 def _heuristic_trade_decision(

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildApiUrl } from "@/lib/apiBase";
 import { detectTickerMarket, normalizeTicker } from "@/lib/tickerMap";
@@ -60,6 +60,32 @@ type CopilotOutput = {
     explanation?: string;
   }>;
   error?: string;
+  evidence_provenance?: Array<{
+    source_id: string;
+    source_type: string;
+    ticker?: string | null;
+    provider?: string | null;
+    title?: string | null;
+    url?: string | null;
+    confidence?: number;
+  }>;
+  claim_evidence?: Array<{
+    claim_id: string;
+    output_field: string;
+    claim: string;
+    evidence_ids: string[];
+    confidence_score: number;
+    confidence_label: string;
+    unsupported: boolean;
+    notes: string[];
+  }>;
+  unsupported_claims?: Array<{
+    output_field: string;
+    claim: string;
+    reason: string;
+    severity: string;
+  }>;
+  confidence_score?: number;
 };
 
 export default function CopilotPage() {
@@ -67,6 +93,80 @@ export default function CopilotPage() {
     <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a] text-white px-6 py-6">Loading copilot...</div>}>
       <CopilotPageContent />
     </Suspense>
+  );
+}
+
+function EvidenceAudit({ output }: { output: CopilotOutput }) {
+  const sources = output.evidence_provenance ?? [];
+  const claims = output.claim_evidence ?? [];
+  const unsupported = output.unsupported_claims ?? [];
+
+  if (sources.length === 0 && claims.length === 0 && unsupported.length === 0) {
+    return null;
+  }
+
+  return (
+    <details className="mt-5 rounded-xl border border-white/10 bg-black/25 p-3">
+      <summary className="cursor-pointer text-sm font-semibold text-zinc-200">
+        Evidence provenance
+      </summary>
+      <p className="mt-2 text-xs leading-5 text-zinc-500">
+        Generated insights are linked to available market data, fundamentals,
+        analyst signals, news, and deterministic calculations.
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <AuditMetric label="Sources" value={sources.length} />
+        <AuditMetric label="Linked claims" value={claims.length} />
+        <AuditMetric
+          label="Confidence"
+          value={output.confidence_score !== undefined ? `${Math.round(output.confidence_score * 100)}%` : "N/A"}
+        />
+      </div>
+      {unsupported.length > 0 ? (
+        <div className="mt-3 rounded-lg border border-amber-300/25 bg-amber-300/10 p-3">
+          <div className="text-xs font-medium text-amber-100">Unsupported claim warnings</div>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-amber-100/80">
+            {unsupported.slice(0, 4).map((item) => (
+              <li key={`${item.output_field}-${item.reason}`}>
+                {item.output_field}: {item.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="mt-3 space-y-2">
+        {sources.slice(0, 5).map((source) => (
+          <div key={source.source_id} className="rounded-lg border border-white/10 bg-black/20 p-2 text-xs">
+            <div className="font-medium text-zinc-200">
+              {source.source_type}
+              {source.ticker ? ` · ${source.ticker}` : ""}
+            </div>
+            <div className="mt-1 break-words text-zinc-500">
+              {source.title || source.provider || source.source_id}
+            </div>
+            {source.url ? (
+              <a
+                href={source.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-block break-all text-amber-100 hover:text-white"
+              >
+                {source.url}
+              </a>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function AuditMetric({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+      <div className="text-xs text-zinc-500">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-zinc-100">{value}</div>
+    </div>
   );
 }
 
@@ -118,6 +218,12 @@ function CopilotScreen({
     explain: "/explain",
   };
 
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   async function run() {
     const clean = normalizeTicker(ticker);
     if (!clean) return;
@@ -142,6 +248,7 @@ function CopilotScreen({
       }
     } finally {
       if (abortRef.current === controller) {
+        abortRef.current = null;
         setLoading(false);
       }
     }
@@ -153,50 +260,88 @@ function CopilotScreen({
   }
 
   async function runStream(clean: string, signal: AbortSignal): Promise<boolean> {
-    const res = await fetch(buildApiUrl(endpointMap[mode]), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ticker: clean }),
-      signal,
-    });
-
-    const contentType = res.headers.get("content-type") ?? "";
-    const reader = res.body?.getReader();
-
-    if (!res.ok || !reader || !contentType.includes("text/event-stream")) {
-      return false;
-    }
-
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
     let sawFinalOutput = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      const res = await fetch(buildApiUrl(endpointMap[mode]), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker: clean }),
+        signal,
+      });
 
-      buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split("\n\n");
-      buffer = chunks.pop() || "";
+      const contentType = res.headers.get("content-type") ?? "";
+      reader = res.body?.getReader();
 
-      for (const chunk of chunks) {
-        const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
-        if (!line) continue;
+      if (!res.ok || !reader || !contentType.includes("text/event-stream")) {
+        return false;
+      }
 
-        const event = JSON.parse(line.replace("data: ", "")) as EventRecord;
-        pushEvent(event);
+      while (!signal.aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-        if (event.type === "partial_output" || event.type === "final_output") {
-          setOutput((prev) => mergeOutput(prev, event.data));
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() || "";
+
+        for (const chunk of chunks) {
+          if (signal.aborted) {
+            buffer = "";
+            return sawFinalOutput;
+          }
+
+          const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
+          if (!line) continue;
+
+          let event: EventRecord;
+          try {
+            event = JSON.parse(line.replace("data: ", "")) as EventRecord;
+          } catch (err) {
+            if (signal.aborted) {
+              buffer = "";
+              return sawFinalOutput;
+            }
+            throw err;
+          }
+
+          pushEvent(event);
+
+          if (event.type === "partial_output" || event.type === "final_output") {
+            setOutput((prev) => mergeOutput(prev, event.data));
+          }
+
+          if (event.type === "final_output") {
+            sawFinalOutput = true;
+          }
         }
+      }
 
-        if (event.type === "final_output") {
-          sawFinalOutput = true;
+      return sawFinalOutput;
+    } catch (err) {
+      if (signal.aborted) {
+        buffer = "";
+        return sawFinalOutput;
+      }
+      throw err;
+    } finally {
+      buffer = "";
+      if (reader) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The stream may already be closed or aborted.
+        }
+        try {
+          reader.releaseLock();
+        } catch {
+          // The lock may already be released after cancellation.
         }
       }
     }
-
-    return sawFinalOutput;
   }
 
   async function runFallback(clean: string, signal: AbortSignal, message: string) {
@@ -214,7 +359,30 @@ function CopilotScreen({
     });
 
     if (!res.ok) {
-      throw new Error(`Fallback request failed with status ${res.status}`);
+      let errorPayload: CopilotOutput | null = null;
+      try {
+        errorPayload = (await res.json()) as CopilotOutput;
+      } catch {
+        errorPayload = {
+          ticker: clean,
+          error: `Fallback request failed with status ${res.status}`,
+        };
+      }
+      setOutput((prev) => mergeOutput(prev, errorPayload));
+      pushEvent({
+        type: "timeline_step",
+        step: "final_answer",
+        title: "Final Answer",
+        status: "failed",
+        summary: errorPayload.error ?? `Fallback request failed with status ${res.status}.`,
+        timestamp: new Date().toISOString(),
+        metadata: {
+          source: "fallback",
+          status: res.status,
+          ticker: clean,
+        },
+      });
+      throw new Error(errorPayload.error ?? `Fallback request failed with status ${res.status}`);
     }
 
     const raw = (await res.json()) as CopilotOutput;
@@ -328,8 +496,17 @@ function CopilotScreen({
           onClick={() => router.push("/")}
           className="text-xl font-semibold hover:opacity-80"
         >
-          Stock AI Copilot
+          Stock Intelligence Copilot
         </button>
+
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={() => router.push("/portfolio")}
+            className="rounded-xl border border-white/10 bg-zinc-900 px-4 py-2 text-sm"
+          >
+            Portfolio Mode
+          </button>
+        </div>
 
         <div className="mt-6 grid grid-cols-12 gap-6">
           {/* LEFT */}
@@ -414,6 +591,7 @@ function CopilotScreen({
                 {output.error && (
                   <div className="mt-3 text-sm text-rose-300">{output.error}</div>
                 )}
+                <EvidenceAudit output={output} />
               </div>
             )}
 
@@ -426,6 +604,7 @@ function CopilotScreen({
                 {output.error && (
                   <div className="text-rose-300">{output.error}</div>
                 )}
+                <EvidenceAudit output={output} />
               </div>
             )}
 
@@ -454,6 +633,7 @@ function CopilotScreen({
                 {output.error && (
                   <div className="text-rose-300">{output.error}</div>
                 )}
+                <EvidenceAudit output={output} />
               </div>
             )}
           </div>

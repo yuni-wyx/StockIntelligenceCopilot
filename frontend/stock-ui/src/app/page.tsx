@@ -47,6 +47,12 @@ export default function HomePage() {
         >
           Open Copilot
         </button>
+        <button
+          onClick={() => router.push("/portfolio")}
+          className="px-4 py-2 rounded-xl border border-white/10 bg-zinc-900 text-white"
+        >
+          Portfolio Mode
+        </button>
       </div>
 
       {normalizedTicker ? (

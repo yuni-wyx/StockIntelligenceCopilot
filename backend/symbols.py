@@ -19,6 +19,10 @@ TW_ALIAS_MAP: dict[str, str] = {
     "2454.tw": "2454.TW",
     "聯發科": "2454.TW",
     "mediatek": "2454.TW",
+    "00878": "00878.TW",
+    "00878.tw": "00878.TW",
+    "00687b": "00687B.TW",
+    "00687b.tw": "00687B.TW",
 }
 
 TW_CANONICAL_TO_NAME: dict[str, str] = {
@@ -48,11 +52,11 @@ def normalize_symbol(value: str) -> str:
     if raw in TW_ALIAS_MAP:
         return TW_ALIAS_MAP[raw]
 
-    if re.fullmatch(r"\d{4}\.tw", lower):
-        return f"{raw[:4]}.TW"
+    if re.fullmatch(r"\d{4,5}[a-z]?\.tw", lower):
+        return f"{raw[:-3].upper()}.TW"
 
-    if re.fullmatch(r"\d{4}", raw):
-        return f"{raw}.TW"
+    if re.fullmatch(r"\d{4,5}[A-Za-z]?", raw):
+        return f"{raw.upper()}.TW"
 
     return raw.upper()
 
@@ -88,7 +92,7 @@ def extract_symbols_from_text(text: str) -> list[str]:
     normalized_text = text.strip()
     upper = normalized_text.upper()
 
-    pattern = r"\b(?:\d{4}(?:\.TW)?|[A-Z]{1,5}(?:\.[A-Z]{1,2})?)\b"
+    pattern = r"\b(?:\d{4,5}[A-Z]?(?:\.TW)?|[A-Z]{1,5}(?:\.[A-Z]{1,2})?)\b"
     raw_candidates = re.findall(pattern, upper)
 
     stopwords = {

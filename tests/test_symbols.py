@@ -16,6 +16,8 @@ class SymbolNormalizationTest(unittest.TestCase):
         self.assertEqual(normalize_symbol("2330"), "2330.TW")
         self.assertEqual(normalize_symbol("2330.TW"), "2330.TW")
         self.assertEqual(normalize_symbol("台積電"), "2330.TW")
+        self.assertEqual(normalize_symbol("00878"), "00878.TW")
+        self.assertEqual(normalize_symbol("00687B"), "00687B.TW")
         self.assertEqual(detect_market("2330"), "TW")
         self.assertEqual(detect_market("NVDA"), "US")
 
@@ -24,6 +26,10 @@ class SymbolNormalizationTest(unittest.TestCase):
 
         self.assertEqual(extract_symbols_from_text("explain 台積電"), ["2330.TW"])
         self.assertEqual(extract_symbols_from_text("research 2330"), ["2330.TW"])
+        self.assertEqual(
+            extract_symbols_from_text("research 00878 00687B"),
+            ["00878.TW", "00687B.TW"],
+        )
         self.assertEqual(extract_symbols_from_text("watchlist NVDA 台積電"), ["NVDA", "2330.TW"])
 
 

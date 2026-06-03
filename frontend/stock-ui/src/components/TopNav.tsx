@@ -8,7 +8,7 @@ import { marketLabel, normalizeTicker, tickerDisplayName } from "@/lib/tickerMap
 type Props = {
   inputTicker: string;
   setInputTicker: (value: string) => void;
-  active: "research" | "explain" | "watchlist";
+  active: "research" | "explain" | "watchlist" | "portfolio";
 };
 
 export function TopNav({ inputTicker, setInputTicker, active }: Props) {
@@ -20,7 +20,7 @@ export function TopNav({ inputTicker, setInputTicker, active }: Props) {
   const displayName = tickerDisplayName(inputTicker);
 
   const navBtn = (
-    key: "research" | "explain" | "watchlist",
+    key: "research" | "explain" | "watchlist" | "portfolio",
     href: string,
     label: string
   ) => {
@@ -74,6 +74,7 @@ export function TopNav({ inputTicker, setInputTicker, active }: Props) {
         )}
 
         {navBtn("watchlist", "/watchlist", t.watchlist)}
+        {navBtn("portfolio", "/portfolio", t.portfolio)}
       </div>
     </div>
   );

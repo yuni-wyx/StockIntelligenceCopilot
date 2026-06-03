@@ -10,7 +10,7 @@ class RouteMapTest(unittest.TestCase):
             for route in app.routes
             if hasattr(route, "methods")
             for method in route.methods
-            if method in {"GET", "POST"}
+            if method in {"GET", "POST", "PUT", "DELETE"}
         }
 
         expected = {
@@ -21,6 +21,15 @@ class RouteMapTest(unittest.TestCase):
             ("POST", "/api/explain"),
             ("POST", "/api/watchlist"),
             ("POST", "/api/trade"),
+            ("POST", "/api/portfolio/analyze"),
+            ("POST", "/api/portfolio/scenario"),
+            ("POST", "/api/portfolio/scenarios/compare"),
+            ("POST", "/api/portfolio/agent"),
+            ("POST", "/api/portfolio/save"),
+            ("GET", "/api/portfolio/current"),
+            ("PUT", "/api/portfolio/current"),
+            ("DELETE", "/api/portfolio/current"),
+            ("GET", "/api/portfolio/list"),
             ("POST", "/api/research/stream"),
             ("POST", "/api/explain/stream"),
             ("POST", "/api/trade/stream"),

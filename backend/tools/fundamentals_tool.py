@@ -79,6 +79,8 @@ class CompanyProfile(BaseModel):
     founded: str
     headquarters: str
     ceo: str
+    dividend_yield: float | None = None
+    annual_dividend_per_share: float | None = None
 
 
 class FundamentalsResponse(BaseModel):
@@ -224,6 +226,8 @@ def fetch_fundamentals(request: FundamentalsRequest) -> FundamentalsResponse:
         founded=str(lead_officer.get("yearBorn", "")) if info.get("companyOfficers") else "Unknown",
         headquarters=headquarters,
         ceo=(lead_officer.get("name") if info.get("companyOfficers") else None) or "Unknown",
+        dividend_yield=round(_safe_float(info.get("dividendYield")), 4) or None,
+        annual_dividend_per_share=round(_safe_float(info.get("dividendRate")), 4) or None,
     )
 
     # ---- Valuation ----

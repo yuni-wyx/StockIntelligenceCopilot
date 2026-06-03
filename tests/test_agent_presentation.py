@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+
+class AgentPresentationTest(unittest.TestCase):
+    def test_agent_result_to_api_response_serializes_existing_shape(self) -> None:
+        from backend.api.agent_presentation import agent_result_to_api_response
+        from backend.schemas.agent import (
+            AgentEvidenceBundle,
+            AgentPlan,
+            AgentResult,
+            AgentTask,
+            AgentTaskType,
+        )
+        from backend.schemas.output_schema import TradingDecisionOutput
+
+        result = AgentResult(
+            task=AgentTask(
+                task_type=AgentTaskType.TRADE,
+                raw_query="trade TSLA",
+                tickers=["TSLA"],
+            ),
+            plan=AgentPlan(
+                task_type=AgentTaskType.TRADE,
+                summary="Trade TSLA",
+                expected_outputs=["trade_setup"],
+            ),
+            evidence=AgentEvidenceBundle(context={"raw_query": "trade TSLA"}),
+            output=TradingDecisionOutput(
+                ticker="TSLA",
+                bias="Neutral",
+                buy_zone="Current reference: $100.00",
+                stop_loss="$95.00",
+                take_profit="$108.00",
+                confidence=40,
+                reasoning=["Grounded setup."],
+            ),
+            output_type="TradingDecisionOutput",
+        )
+
+        payload = agent_result_to_api_response(result)
+        self.assertEqual(payload["ticker"], "TSLA")
+        self.assertEqual(payload["buy_zone"], "Current reference: $100.00")
+        self.assertIn("evidence_provenance", payload)
+        self.assertIn("claim_evidence", payload)
+        self.assertIn("unsupported_claims", payload)
+        self.assertIn("confidence_score", payload)
+
+    def test_agent_exception_to_api_error_preserves_legacy_error_shape(self) -> None:
+        from backend.api.agent_presentation import agent_exception_to_api_error
+        from backend.schemas.agent import AgentTask, AgentTaskType
+
+        payload = agent_exception_to_api_error(
+            AgentTask(
+                task_type=AgentTaskType.EXPLAIN,
+                raw_query="explain TSLA",
+                tickers=["TSLA"],
+            ),
+            RuntimeError("boom"),
+        )
+
+        self.assertEqual(payload["ticker"], "TSLA")
+        self.assertIn("Explain mode failed", payload["price_move_summary"])
+
+    def test_agent_result_links_generated_fields_to_evidence(self) -> None:
+        from backend.api.agent_presentation import agent_result_to_api_response
+        from backend.schemas.agent import (
+            AgentEvidenceBundle,
+            AgentPlan,
+            AgentResult,
+            AgentTask,
+            AgentTaskType,
+        )
+        from backend.schemas.evidence_schema import AggregatedEvidence, TickerEvidence
+        from backend.schemas.output_schema import TradingDecisionOutput
+
+        result = AgentResult(
+            task=AgentTask(
+                task_type=AgentTaskType.TRADE,
+                raw_query="trade TSLA",
+                tickers=["TSLA"],
+            ),
+            plan=AgentPlan(
+                task_type=AgentTaskType.TRADE,
+                summary="Trade TSLA",
+                expected_outputs=["trade_setup"],
+            ),
+            evidence=AgentEvidenceBundle(
+                context={"raw_query": "trade TSLA"},
+                legacy_evidence=AggregatedEvidence(
+                    mode="trade",
+                    tickers_evidence={
+                        "TSLA": TickerEvidence(
+                            ticker="TSLA",
+                            market_data={"current_price": 100.0},
+                            fundamentals={"profile": {"name": "Tesla"}},
+                            news=[
+                                {
+                                    "title": "Tesla update",
+                                    "source": "Example News",
+                                    "url": "https://example.com/tsla",
+                                    "published_at": "2026-06-03T00:00:00Z",
+                                    "relevance_score": 0.8,
+                                }
+                            ],
+                        )
+                    },
+                    total_tool_calls=3,
+                    successful_calls=3,
+                ),
+            ),
+            output=TradingDecisionOutput(
+                ticker="TSLA",
+                bias="Neutral",
+                buy_zone="Current reference: $100.00",
+                stop_loss="$95.00",
+                take_profit="$108.00",
+                confidence=40,
+                reasoning=["Grounded setup."],
+            ),
+            output_type="TradingDecisionOutput",
+        )
+
+        payload = agent_result_to_api_response(result)
+
+        self.assertGreaterEqual(len(payload["evidence_provenance"]), 3)
+        linked_fields = {
+            item["output_field"]
+            for item in payload["claim_evidence"]
+            if item["evidence_ids"]
+        }
+        self.assertIn("buy_zone", linked_fields)
+        self.assertIn("reasoning", linked_fields)
+
+    def test_unsupported_claim_detection_flags_unsafe_certainty(self) -> None:
+        from backend.services.evidence_provenance import build_claim_evidence
+
+        claims, unsupported, confidence = build_claim_evidence(
+            {"summary": "This trade is guaranteed to work."},
+            [],
+        )
+
+        self.assertEqual(confidence, 0.0)
+        self.assertTrue(claims[0].unsupported)
+        self.assertGreaterEqual(len(unsupported), 2)
+        self.assertTrue(any("guarantee" in item.reason for item in unsupported))
+
+
+if __name__ == "__main__":
+    unittest.main()
