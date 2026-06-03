@@ -2,6 +2,8 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { LanguageToggle } from "@/components/LanguageToggle";
+import { useLanguage } from "@/context/LanguageContext";
 import {
   analyzePortfolio,
   askPortfolioAgent,
@@ -97,6 +99,9 @@ const invalidInputClassName =
 const textareaClassName =
   "min-h-36 w-full min-w-0 resize-y rounded-xl border border-white/10 bg-black/45 px-3 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-amber-200/50";
 
+const secondaryLinkClassName =
+  "rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-zinc-200 transition hover:border-white/20";
+
 const scenarioKindOptions: Array<{
   value: ComparisonScenarioKind;
   label: string;
@@ -125,6 +130,8 @@ const scenarioKindOptions: Array<{
 ];
 
 export default function PortfolioPage() {
+  const { t } = useLanguage();
+  const ws = t.wealthStudio;
   const [holdings, setHoldings] = useState<HoldingInput[]>([
     {
       ticker: "00878",
@@ -189,7 +196,7 @@ export default function PortfolioPage() {
         messages.push({
           rowIndex: index,
           field: "ticker",
-          message: `${rowLabel}: add a ticker before analyzing.`,
+          message: `${rowLabel}: ${ws.tickerRequired}`,
         });
         fieldKeys.add(`${index}:ticker`);
       }
@@ -198,14 +205,14 @@ export default function PortfolioPage() {
         messages.push({
           rowIndex: index,
           field: "shares",
-          message: `${rowLabel}: shares are required and must be positive.`,
+          message: `${rowLabel}: ${ws.sharesRequired}`,
         });
         fieldKeys.add(`${index}:shares`);
       } else if (holding.shares <= 0) {
         messages.push({
           rowIndex: index,
           field: "shares",
-          message: `${rowLabel}: shares must be greater than 0.`,
+          message: `${rowLabel}: ${ws.sharesPositive}`,
         });
         fieldKeys.add(`${index}:shares`);
       }
@@ -215,7 +222,7 @@ export default function PortfolioPage() {
           messages.push({
             rowIndex: index,
             field: "avg_cost",
-            message: `${rowLabel}: average cost cannot be negative.`,
+            message: `${rowLabel}: ${ws.avgCostNonNegative}`,
           });
           fieldKeys.add(`${index}:avg_cost`);
         }
@@ -226,7 +233,7 @@ export default function PortfolioPage() {
           messages.push({
             rowIndex: index,
             field: "current_price",
-            message: `${rowLabel}: current price cannot be negative.`,
+            message: `${rowLabel}: ${ws.currentPriceNonNegative}`,
           });
           fieldKeys.add(`${index}:current_price`);
         }
@@ -237,7 +244,7 @@ export default function PortfolioPage() {
       messages.push({
         rowIndex: -1,
         field: "ticker",
-        message: "Add at least one holding before running an analysis.",
+        message: ws.noHoldingsBody,
       });
     }
 
@@ -246,7 +253,7 @@ export default function PortfolioPage() {
       fieldKeys,
       hasErrors: messages.length > 0,
     };
-  }, [holdings]);
+  }, [holdings, ws]);
 
   function currentPortfolioPayload() {
     return {
@@ -345,7 +352,7 @@ export default function PortfolioPage() {
         "Scenario";
 
       if (!ticker) {
-        errors.push(`${name}: ticker is required.`);
+        errors.push(`${name}: ${ws.scenarioTickerRequired}`);
       }
 
       if (
@@ -353,9 +360,9 @@ export default function PortfolioPage() {
         scenarioItem.kind === "reduce_concentration"
       ) {
         if (!scenarioItem.percentage.trim() || Number.isNaN(percentage)) {
-          errors.push(`${name}: percentage is required.`);
+          errors.push(`${name}: ${ws.scenarioPercentageRequired}`);
         } else if (percentage <= 0 || percentage > 100) {
-          errors.push(`${name}: percentage must be between 0 and 100.`);
+          errors.push(`${name}: ${ws.scenarioPercentageRange}`);
         }
 
         return {
@@ -374,9 +381,9 @@ export default function PortfolioPage() {
       }
 
       if (!scenarioItem.amount.trim() || Number.isNaN(amount)) {
-        errors.push(`${name}: amount is required.`);
+        errors.push(`${name}: ${ws.scenarioAmountRequired}`);
       } else if (amount <= 0) {
-        errors.push(`${name}: amount must be positive.`);
+        errors.push(`${name}: ${ws.scenarioAmountPositive}`);
       }
 
       return {
@@ -399,7 +406,7 @@ export default function PortfolioPage() {
 
   async function handleAnalyze() {
     if (holdingsValidation.hasErrors) {
-      setError("Please fix the highlighted holding details before analyzing.");
+      setError(ws.analyzeValidationError);
       return;
     }
 
@@ -413,7 +420,7 @@ export default function PortfolioPage() {
       const result = await analyzePortfolio(currentPortfolioPayload());
       setAnalysis(result);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to analyze portfolio.";
+      const message = err instanceof Error ? err.message : ws.failedAnalyze;
       setError(message);
       setInsightsError(message);
     } finally {
@@ -435,7 +442,7 @@ export default function PortfolioPage() {
       const listed = await listSavedPortfolios();
       setSavedPortfolios(listed.portfolios);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save portfolio.");
+      setError(err instanceof Error ? err.message : ws.failedSave);
     } finally {
       setLoading(false);
       setActiveOperation(null);
@@ -449,7 +456,7 @@ export default function PortfolioPage() {
     try {
       const record = await loadCurrentPortfolio();
       if (!record.portfolio) {
-        setError("No saved current portfolio found.");
+        setError(ws.noSavedCurrent);
         return;
       }
       setHoldings(record.portfolio.holdings ?? []);
@@ -458,7 +465,7 @@ export default function PortfolioPage() {
       const listed = await listSavedPortfolios();
       setSavedPortfolios(listed.portfolios);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load portfolio.");
+      setError(err instanceof Error ? err.message : ws.failedLoad);
     } finally {
       setLoading(false);
       setActiveOperation(null);
@@ -499,7 +506,7 @@ export default function PortfolioPage() {
       });
       setScenario(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to run scenario.");
+      setError(err instanceof Error ? err.message : ws.failedScenario);
     } finally {
       setLoading(false);
       setActiveOperation(null);
@@ -539,7 +546,7 @@ export default function PortfolioPage() {
       setComparison(result);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to compare portfolio scenarios.",
+        err instanceof Error ? err.message : ws.failedCompare,
       );
     } finally {
       setLoading(false);
@@ -558,7 +565,7 @@ export default function PortfolioPage() {
       });
       setAgentResponse(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get agent recommendation.");
+      setError(err instanceof Error ? err.message : ws.failedCoach);
     } finally {
       setLoading(false);
       setActiveOperation(null);
@@ -571,60 +578,70 @@ export default function PortfolioPage() {
         <header className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-3xl">
             <p className="text-xs font-medium uppercase tracking-[0.22em] text-amber-200/70">
-              Wealth Studio
+              {ws.eyebrow}
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Wealth Studio
+              {ws.title}
             </h1>
             <p className="mt-3 text-sm leading-6 text-zinc-300">
-              A calmer workspace for reviewing holdings, saving your local setup,
-              asking portfolio questions, and testing reallocation ideas.
+              {ws.subtitle}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/"
-              className="rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-zinc-200 transition hover:border-white/20"
-            >
-              Home
+          <div className="flex flex-wrap items-center gap-2">
+            <LanguageToggle />
+            <Link href="/" className={secondaryLinkClassName}>
+              {ws.home}
             </Link>
-            <Link
-              href="/copilot?mode=research"
-              className="rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-zinc-200 transition hover:border-white/20"
-            >
-              Research Mode
+            <Link href="/copilot?mode=research" className={secondaryLinkClassName}>
+              {ws.researchMode}
             </Link>
           </div>
         </header>
+
+        <section className="rounded-2xl border border-white/10 bg-zinc-900/50 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">{ws.firstRunTitle}</h2>
+              <p className="mt-1 text-sm leading-6 text-zinc-400">{ws.firstRunHelper}</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {ws.firstRunSteps.map((step, index) => (
+                <div key={step} className="rounded-xl border border-white/10 bg-black/25 p-3">
+                  <div className="text-xs font-medium uppercase tracking-[0.14em] text-amber-200/60">
+                    {ws.firstRunStepLabel} {index + 1}
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-zinc-100">{step}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px]">
           <main className="min-w-0 space-y-6">
             <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-5 shadow-2xl shadow-black/20">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold">Your Holdings</h2>
+                  <h2 className="text-xl font-semibold">{ws.yourHoldings}</h2>
                   <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-400">
-                    Add the positions you want the studio to analyze. Keep only
-                    the fields you know; missing data will be called out in the insights.
-                    Ticker and positive shares are required.
+                    {ws.holdingsHelper}
                   </p>
                 </div>
                 <button
                   onClick={addHolding}
                   className="w-full rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-100 sm:w-auto"
                 >
-                  Add Holding
+                  {ws.addHolding}
                 </button>
               </div>
 
               {holdingsValidation.hasErrors ? (
                 <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4">
                   <h3 className="text-sm font-semibold text-amber-100">
-                    Check these holding details
+                    {ws.holdingValidationTitle}
                   </h3>
                   <p className="mt-1 text-sm leading-6 text-amber-100/75">
-                    Common fixes: add a ticker, enter shares above 0, and keep
-                    cost or price at 0 or higher.
+                    {ws.holdingValidationHelper}
                   </p>
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-100/85">
                     {holdingsValidation.messages.map((message) => (
@@ -639,8 +656,8 @@ export default function PortfolioPage() {
               <div className="mt-5 space-y-3">
                 {holdings.length === 0 ? (
                   <EmptyState
-                    title="No holdings yet"
-                    body="Add a holding to start. You only need a ticker, positive shares, and any price or cost details you know."
+                    title={ws.noHoldingsTitle}
+                    body={ws.noHoldingsBody}
                   />
                 ) : null}
 
@@ -651,7 +668,7 @@ export default function PortfolioPage() {
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-[0.9fr_1.4fr_0.9fr_0.9fr]">
-                        <Field label="Ticker">
+                        <Field label={ws.ticker}>
                           <input
                             value={holding.ticker}
                             onChange={(e) => updateHolding(index, "ticker", e.target.value)}
@@ -659,14 +676,14 @@ export default function PortfolioPage() {
                             className={holdingInputClass(index, "ticker")}
                           />
                         </Field>
-                        <Field label="Name">
+                        <Field label={ws.name}>
                           <input
                             value={holding.name ?? ""}
                             onChange={(e) => updateHolding(index, "name", e.target.value)}
                             className={inputClassName}
                           />
                         </Field>
-                        <Field label="Shares">
+                        <Field label={ws.shares}>
                           <input
                             value={holding.shares ?? ""}
                             onChange={(e) => updateHolding(index, "shares", e.target.value)}
@@ -674,7 +691,7 @@ export default function PortfolioPage() {
                             className={holdingInputClass(index, "shares")}
                           />
                         </Field>
-                        <Field label="Current Price">
+                        <Field label={ws.currentPrice}>
                           <input
                             value={holding.current_price ?? ""}
                             onChange={(e) => updateHolding(index, "current_price", e.target.value)}
@@ -687,12 +704,12 @@ export default function PortfolioPage() {
                         onClick={() => removeHolding(index)}
                         className="rounded-xl border border-white/10 px-3 py-2 text-sm text-zinc-300 transition hover:border-rose-300/50 hover:text-rose-200"
                       >
-                        Remove
+                        {ws.remove}
                       </button>
                     </div>
 
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                      <Field label="Avg Cost">
+                      <Field label={ws.avgCost}>
                         <input
                           value={holding.avg_cost ?? ""}
                           onChange={(e) => updateHolding(index, "avg_cost", e.target.value)}
@@ -700,14 +717,14 @@ export default function PortfolioPage() {
                           className={holdingInputClass(index, "avg_cost")}
                         />
                       </Field>
-                      <Field label="Current Value">
+                      <Field label={ws.currentValue}>
                         <input
                           value={holding.current_value ?? ""}
                           onChange={(e) => updateHolding(index, "current_value", e.target.value)}
                           className={inputClassName}
                         />
                       </Field>
-                      <Field label="Asset Type" helper="Optional, used for exposure grouping.">
+                      <Field label={ws.assetType} helper={ws.assetTypeHelper}>
                         <input
                           value={holding.asset_type ?? ""}
                           onChange={(e) => updateHolding(index, "asset_type", e.target.value)}
@@ -715,7 +732,7 @@ export default function PortfolioPage() {
                           className={inputClassName}
                         />
                       </Field>
-                      <Field label="Category" helper="Optional, helps group income, growth, or themes.">
+                      <Field label={ws.category} helper={ws.categoryHelper}>
                         <input
                           value={holding.category ?? ""}
                           onChange={(e) => updateHolding(index, "category", e.target.value)}
@@ -723,7 +740,7 @@ export default function PortfolioPage() {
                           className={inputClassName}
                         />
                       </Field>
-                      <Field label="Notes">
+                      <Field label={ws.notes}>
                         <input
                           value={holding.notes ?? ""}
                           onChange={(e) => updateHolding(index, "notes", e.target.value)}
@@ -736,7 +753,7 @@ export default function PortfolioPage() {
               </div>
 
               <div className="mt-5 grid gap-3 md:grid-cols-[0.45fr_1fr]">
-                <Field label="Risk Profile">
+                <Field label={ws.riskProfile}>
                   <input
                     value={riskProfile}
                     onChange={(e) => setRiskProfile(e.target.value)}
@@ -744,7 +761,7 @@ export default function PortfolioPage() {
                     className={inputClassName}
                   />
                 </Field>
-                <Field label="Goal">
+                <Field label={ws.goal}>
                   <input
                     value={goal}
                     onChange={(e) => setGoal(e.target.value)}
@@ -760,21 +777,21 @@ export default function PortfolioPage() {
                   disabled={loading || holdingsValidation.hasErrors}
                   className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50"
                 >
-                  {loading ? "Working..." : "Analyze Holdings"}
+                  {loading ? ws.working : ws.analyzeHoldings}
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={loading}
                   className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-sm text-zinc-200 transition hover:border-white/20 disabled:opacity-50"
                 >
-                  Save Workspace
+                  {ws.saveWorkspace}
                 </button>
                 <button
                   onClick={handleLoad}
                   disabled={loading}
                   className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-sm text-zinc-200 transition hover:border-white/20 disabled:opacity-50"
                 >
-                  Load Saved
+                  {ws.loadSaved}
                 </button>
               </div>
             </section>
@@ -786,9 +803,9 @@ export default function PortfolioPage() {
             ) : null}
 
             <section className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
-              <h2 className="text-xl font-semibold">Saved Workspaces</h2>
+              <h2 className="text-xl font-semibold">{ws.savedWorkspaces}</h2>
               <p className="mt-1 text-sm leading-6 text-zinc-400">
-                Save this local demo workspace, then reload it when you come back.
+                {ws.savedWorkspacesHelper}
               </p>
               {savedPortfolios.length > 0 ? (
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -799,15 +816,15 @@ export default function PortfolioPage() {
                     >
                       <div className="break-words font-medium">{String(portfolio.name)}</div>
                       <div className="mt-2 text-zinc-400">
-                        Holdings: {String(portfolio.holding_count ?? 0)}
+                        {ws.holdingsCount}: {String(portfolio.holding_count ?? 0)}
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <EmptyState
-                  title="No saved workspace loaded yet"
-                  body="Use Save Workspace after entering your holdings, or Load Saved if you already created a local demo portfolio."
+                  title={ws.noSavedTitle}
+                  body={ws.noSavedBody}
                 />
               )}
             </section>
@@ -815,36 +832,36 @@ export default function PortfolioPage() {
             <section className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold">Portfolio Insights</h2>
+                  <h2 className="text-xl font-semibold">{ws.portfolioInsights}</h2>
                   <p className="mt-1 text-sm leading-6 text-zinc-400">
-                    Health, risk, allocation, income, and next-step signals after analysis.
+                    {ws.insightsHelper}
                   </p>
                 </div>
                 {analysis ? (
                   <Badge tone={scoreTone(analysis.overall_score)}>
-                    {scoreLabel(analysis.overall_score)}
+                    {scoreLabel(analysis.overall_score, ws)}
                   </Badge>
                 ) : null}
               </div>
 
               {activeOperation === "analyze" ? (
                 <div className="mt-4 rounded-2xl border border-sky-300/25 bg-sky-300/10 p-5">
-                  <h3 className="font-medium text-sky-100">Analyzing your holdings</h3>
+                  <h3 className="font-medium text-sky-100">{ws.analyzingTitle}</h3>
                   <p className="mt-2 text-sm leading-6 text-sky-100/75">
-                    Building portfolio health, risk, exposure, and next-step views.
+                    {ws.analyzingBody}
                   </p>
                 </div>
               ) : insightsError ? (
                 <div className="mt-4 rounded-2xl border border-rose-300/30 bg-rose-300/10 p-5">
-                  <h3 className="font-medium text-rose-100">Insights could not be loaded</h3>
+                  <h3 className="font-medium text-rose-100">{ws.insightsErrorTitle}</h3>
                   <p className="mt-2 break-words text-sm leading-6 text-rose-100/80">
                     {insightsError}
                   </p>
                 </div>
               ) : !analysis ? (
                 <EmptyState
-                  title="No analysis yet"
-                  body="Run an analysis to see your portfolio health, risks, and next steps."
+                  title={ws.noAnalysisTitle}
+                  body={ws.noAnalysisBody}
                 />
               ) : (
                 <div className="mt-5 space-y-6">
@@ -852,10 +869,9 @@ export default function PortfolioPage() {
                     <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <h3 className="text-lg font-semibold">Overall Health</h3>
+                          <h3 className="text-lg font-semibold">{ws.overallHealth}</h3>
                           <p className="mt-1 text-sm leading-6 text-zinc-400">
-                            A heuristic snapshot of balance, concentration, income,
-                            defensive exposure, and growth tilt.
+                            {ws.overallHealthHelper}
                           </p>
                         </div>
                         <div className="text-left sm:text-right">
@@ -863,17 +879,17 @@ export default function PortfolioPage() {
                             {formatNumber(analysis.overall_score)}
                           </div>
                           <Badge tone={scoreTone(analysis.overall_score)}>
-                            {scoreLabel(analysis.overall_score)}
+                            {scoreLabel(analysis.overall_score, ws)}
                           </Badge>
                         </div>
                       </div>
 
                       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                        <ScoreRow label="Diversification" value={analysis.diversification_score} />
-                        <ScoreRow label="Concentration" value={analysis.concentration_score} />
-                        <ScoreRow label="Income" value={analysis.income_score} />
-                        <ScoreRow label="Defensive" value={analysis.defensive_score} />
-                        <ScoreRow label="Growth" value={analysis.growth_score} />
+                        <ScoreRow label={ws.diversification} value={analysis.diversification_score} />
+                        <ScoreRow label={ws.concentration} value={analysis.concentration_score} />
+                        <ScoreRow label={ws.income} value={analysis.income_score} />
+                        <ScoreRow label={ws.defensive} value={analysis.defensive_score} />
+                        <ScoreRow label={ws.growth} value={analysis.growth_score} />
                       </div>
 
                       <p className="mt-5 text-sm leading-6 text-zinc-300">
@@ -883,24 +899,24 @@ export default function PortfolioPage() {
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <InsightStat
-                        label="Total Value"
+                        label={ws.totalValue}
                         value={analysis.total_current_value}
-                        helper="Current value from entered holdings."
+                        helper={ws.totalValueHelper}
                       />
                       <InsightStat
-                        label="Unrealized P/L"
+                        label={ws.unrealizedPL}
                         value={analysis.total_unrealized_gain_loss}
-                        helper={`${formatNumber(analysis.total_return_pct)}% total return`}
+                        helper={`${formatNumber(analysis.total_return_pct)}% ${ws.totalReturn}`}
                       />
                       <InsightStat
-                        label="Annual Dividend"
+                        label={ws.annualDividend}
                         value={analysis.estimated_annual_dividend}
-                        helper="Estimated income from available data."
+                        helper={ws.annualDividendHelper}
                       />
                       <InsightStat
-                        label="Monthly Dividend"
+                        label={ws.monthlyDividend}
                         value={analysis.estimated_monthly_dividend}
-                        helper="Monthly equivalent estimate."
+                        helper={ws.monthlyDividendHelper}
                       />
                     </div>
                   </div>
@@ -908,34 +924,34 @@ export default function PortfolioPage() {
                   <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
                     <div className="space-y-4">
                       <InsightPanel
-                        title="Key Risks"
-                        helper="Items to inspect before making changes."
+                        title={ws.keyRisks}
+                        helper={ws.keyRisksHelper}
                         badge={
                           <Badge tone={analysis.risk_flags.length > 0 ? "warning" : "good"}>
-                            {analysis.risk_flags.length > 0 ? "Review" : "Clear"}
+                            {analysis.risk_flags.length > 0 ? ws.review : ws.clear}
                           </Badge>
                         }
                       >
                         <ListContent
                           items={analysis.risk_flags}
-                          emptyLabel="No major risk flags detected."
+                          emptyLabel={ws.noRiskFlags}
                         />
                       </InsightPanel>
 
                       <InsightPanel
-                        title="Recommended Next Steps"
-                        helper="Actionable ideas from the portfolio analysis and, when available, the AI coach."
+                        title={ws.recommendedNextSteps}
+                        helper={ws.nextStepsHelper}
                         badge={<Badge tone="neutral">{analysis.suggestions.length}</Badge>}
                       >
                         <ListContent
                           items={analysis.suggestions}
-                          emptyLabel="No suggestions available."
+                          emptyLabel={ws.noSuggestions}
                         />
                         {agentResponse ? (
                           <div className="mt-4 space-y-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                             <div>
                               <div className="text-xs font-medium uppercase tracking-[0.14em] text-amber-200/60">
-                                AI Coach
+                                {ws.aiCoach}
                               </div>
                               <p className="mt-2 text-sm leading-6 text-zinc-200">
                                 {agentResponse.conclusion}
@@ -946,20 +962,20 @@ export default function PortfolioPage() {
                             </div>
                             <div className="grid gap-4 xl:grid-cols-2">
                               <ListCard
-                                title="Coach Actions"
+                                title={ws.coachActions}
                                 items={agentResponse.suggested_next_actions}
-                                emptyLabel="No coach actions listed."
+                                emptyLabel={ws.noCoachActions}
                               />
                               <ListCard
-                                title="Coach Risks"
+                                title={ws.coachRisks}
                                 items={agentResponse.risks}
-                                emptyLabel="No coach risks listed."
+                                emptyLabel={ws.noCoachRisks}
                               />
                             </div>
                             <div className="grid gap-4 xl:grid-cols-3">
-                              <InfoPanel title="Bull Case" body={agentResponse.bull_case} />
-                              <InfoPanel title="Bear Case" body={agentResponse.bear_case} />
-                              <InfoPanel title="Base Case" body={agentResponse.base_case} />
+                              <InfoPanel title={ws.bullCase} body={agentResponse.bull_case} />
+                              <InfoPanel title={ws.bearCase} body={agentResponse.bear_case} />
+                              <InfoPanel title={ws.baseCase} body={agentResponse.base_case} />
                             </div>
                           </div>
                         ) : null}
@@ -968,42 +984,42 @@ export default function PortfolioPage() {
 
                     <div className="space-y-4">
                       <InsightPanel
-                        title="Allocation / Exposure"
-                        helper="How holdings group across asset type, category, sector, theme, and market."
-                        badge={<Badge tone="neutral">Exposure</Badge>}
+                        title={ws.allocationExposure}
+                        helper={ws.allocationExposureHelper}
+                        badge={<Badge tone="neutral">{ws.exposure}</Badge>}
                       >
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
-                          <ExposureCard title="Asset Type" items={analysis.asset_type_exposure} />
-                          <ExposureCard title="Category" items={analysis.category_exposure} />
-                          <ExposureCard title="Sector" items={analysis.sector_exposure} />
-                          <ExposureCard title="Theme" items={analysis.theme_exposure} />
-                          <ExposureCard title="Market" items={analysis.market_exposure} />
+                          <ExposureCard title={ws.assetTypeExposure} items={analysis.asset_type_exposure} copy={ws} />
+                          <ExposureCard title={ws.categoryExposure} items={analysis.category_exposure} copy={ws} />
+                          <ExposureCard title={ws.sectorExposure} items={analysis.sector_exposure} copy={ws} />
+                          <ExposureCard title={ws.themeExposure} items={analysis.theme_exposure} copy={ws} />
+                          <ExposureCard title={ws.marketExposure} items={analysis.market_exposure} copy={ws} />
                         </div>
                       </InsightPanel>
 
                       <InsightPanel
-                        title="Income / Data Quality"
-                        helper="Dividend estimates are only as complete as the available holding data."
+                        title={ws.incomeDataQuality}
+                        helper={ws.incomeDataQualityHelper}
                         badge={<Badge tone={analysis.missing_data.length > 0 ? "warning" : "good"}>
-                          {analysis.missing_data.length > 0 ? "Check data" : "Data OK"}
+                          {analysis.missing_data.length > 0 ? ws.checkData : ws.dataOk}
                         </Badge>}
                       >
                         <div className="grid gap-3 sm:grid-cols-2">
                           <InsightStat
-                            label="Income Score"
+                            label={ws.incomeScore}
                             value={analysis.income_score}
-                            helper="Heuristic income profile."
+                            helper={ws.incomeScoreHelper}
                           />
                           <InsightStat
-                            label="Total Cost"
+                            label={ws.totalCost}
                             value={analysis.total_cost_basis}
-                            helper="Basis from entered rows."
+                            helper={ws.totalCostHelper}
                           />
                         </div>
                         <div className="mt-4">
                           <ListContent
                             items={analysis.missing_data}
-                            emptyLabel="No material data gaps were detected."
+                            emptyLabel={ws.noMissingData}
                           />
                         </div>
                       </InsightPanel>
@@ -1013,20 +1029,20 @@ export default function PortfolioPage() {
                   <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="font-semibold">News To Monitor</h3>
+                        <h3 className="font-semibold">{ws.newsToMonitor}</h3>
                         <p className="mt-1 text-sm leading-6 text-zinc-400">
-                          Headlines attached to the current holdings, when available.
+                          {ws.newsHelper}
                         </p>
                       </div>
                       <Badge tone={Object.keys(analysis.news_to_monitor).length > 0 ? "neutral" : "good"}>
-                        {Object.keys(analysis.news_to_monitor).length} ticker
+                        {Object.keys(analysis.news_to_monitor).length} {ws.tickerCount}
                         {Object.keys(analysis.news_to_monitor).length === 1 ? "" : "s"}
                       </Badge>
                     </div>
                     <div className="mt-4 space-y-4">
                       {Object.keys(analysis.news_to_monitor).length === 0 ? (
                         <p className="text-sm text-zinc-400">
-                          No news headlines were captured for the current holdings.
+                          {ws.noNews}
                         </p>
                       ) : (
                         Object.entries(analysis.news_to_monitor).map(([ticker, headlines]) => (
@@ -1045,16 +1061,16 @@ export default function PortfolioPage() {
 
                   <details className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <summary className="cursor-pointer text-sm font-semibold text-zinc-200">
-                      Holding Details
+                      {ws.holdingDetails}
                     </summary>
                     <p className="mt-2 text-sm leading-6 text-zinc-500">
-                      Position-level weights, gains, dividends, and themes from the same analysis.
+                      {ws.holdingDetailsHelper}
                     </p>
                     <div className="mt-4 overflow-x-auto">
                       <table className="min-w-[620px] text-left text-sm">
                         <thead className="text-zinc-400">
                           <tr>
-                            {["Ticker", "Weight %", "P/L", "Return %", "Annual Div", "Theme"].map(
+                            {[ws.ticker, ws.weightPct, "P/L", ws.returnPct, ws.annualDiv, ws.theme].map(
                               (label) => (
                                 <th key={label} className="px-2 py-2 font-medium">
                                   {label}
@@ -1089,32 +1105,33 @@ export default function PortfolioPage() {
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
-              <h2 className="text-xl font-semibold">Scenario Comparison</h2>
+              <h2 className="text-xl font-semibold">{ws.scenarioComparison}</h2>
               <p className="mt-1 text-sm leading-6 text-zinc-400">
-                Build a few clean what-if scenarios, then compare them with the
-                same backend scenario contract.
+                {ws.scenarioComparisonHelper}
               </p>
 
               <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-zinc-400">
                   {comparisonScenarios.length > 0
-                    ? `${comparisonScenarios.length} structured scenario${
-                        comparisonScenarios.length === 1 ? "" : "s"
-                      } ready`
-                    : "No structured scenarios added yet"}
+                    ? `${comparisonScenarios.length} ${
+                        comparisonScenarios.length === 1
+                          ? ws.structuredScenarioReady
+                          : ws.structuredScenariosReady
+                      }`
+                    : ws.noStructuredScenarios}
                 </div>
                 <button
                   onClick={addComparisonScenario}
                   className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-amber-100"
                 >
-                  Add Scenario
+                  {ws.addScenario}
                 </button>
               </div>
 
               {comparisonScenarios.length === 0 ? (
                 <EmptyState
-                  title="No comparison scenarios yet"
-                  body="Add a scenario such as selling a percentage of one ticker, buying a cash amount, reducing concentration, or adding a new ETF/stock."
+                  title={ws.noComparisonTitle}
+                  body={ws.noComparisonBody}
                 />
               ) : (
                 <div className="mt-4 space-y-4">
@@ -1134,7 +1151,7 @@ export default function PortfolioPage() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <div className="text-xs font-medium uppercase tracking-[0.16em] text-amber-200/60">
-                              Scenario {index + 1}
+                              {ws.scenario} {index + 1}
                             </div>
                             <h3 className="mt-1 font-semibold">
                               {scenarioItem.name.trim() || `Scenario ${index + 1}`}
@@ -1152,7 +1169,7 @@ export default function PortfolioPage() {
                         </div>
 
                         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1.2fr]">
-                          <Field label="Scenario name">
+                          <Field label={ws.scenarioName}>
                             <input
                               value={scenarioItem.name}
                               onChange={(e) =>
@@ -1166,7 +1183,7 @@ export default function PortfolioPage() {
                               className={inputClassName}
                             />
                           </Field>
-                          <Field label="Scenario type">
+                          <Field label={ws.scenarioType}>
                             <select
                               value={scenarioItem.kind}
                               onChange={(e) =>
@@ -1188,7 +1205,7 @@ export default function PortfolioPage() {
                         </div>
 
                         <div className="mt-3 grid gap-3 md:grid-cols-3">
-                          <Field label="Ticker">
+                          <Field label={ws.ticker}>
                             <input
                               value={scenarioItem.ticker}
                               onChange={(e) =>
@@ -1203,7 +1220,7 @@ export default function PortfolioPage() {
                             />
                           </Field>
                           {needsPercentage ? (
-                            <Field label="Sell percentage">
+                            <Field label={ws.sellPercentage}>
                               <input
                                 value={scenarioItem.percentage}
                                 onChange={(e) =>
@@ -1218,7 +1235,7 @@ export default function PortfolioPage() {
                               />
                             </Field>
                           ) : (
-                            <Field label="Buy amount">
+                            <Field label={ws.buyAmount}>
                               <input
                                 value={scenarioItem.amount}
                                 onChange={(e) =>
@@ -1233,7 +1250,7 @@ export default function PortfolioPage() {
                               />
                             </Field>
                           )}
-                          <Field label="Question">
+                          <Field label={ws.question}>
                             <input
                               value={scenarioItem.question}
                               onChange={(e) =>
@@ -1257,7 +1274,7 @@ export default function PortfolioPage() {
               {comparisonValidation.length > 0 ? (
                 <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4">
                   <h3 className="text-sm font-semibold text-amber-100">
-                    Please fix these scenario details
+                    {ws.validationScenarioTitle}
                   </h3>
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-100/85">
                     {comparisonValidation.map((message) => (
@@ -1273,26 +1290,25 @@ export default function PortfolioPage() {
                   disabled={loading}
                   className="rounded-xl border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50"
                 >
-                  Run Scenario Comparison
+                  {ws.runScenarioComparison}
                 </button>
                 {comparisonScenarios.length === 0 ? (
                   <span className="text-sm text-zinc-500">
-                    Advanced JSON will be used until you add structured scenarios.
+                    {ws.advancedJsonHint}
                   </span>
                 ) : (
                   <span className="text-sm text-zinc-500">
-                    Structured scenarios will be converted to the existing API payload.
+                    {ws.structuredPayloadHint}
                   </span>
                 )}
               </div>
 
               <details className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-zinc-200">
-                  Advanced JSON editor
+                  {ws.advancedJsonEditor}
                 </summary>
                 <p className="mt-2 text-sm leading-6 text-zinc-500">
-                  Kept for compatibility and power users. It is used only when
-                  no structured scenarios are added above.
+                  {ws.advancedJsonHelper}
                 </p>
                 <textarea
                   value={compareJson}
@@ -1308,13 +1324,13 @@ export default function PortfolioPage() {
                     <thead className="text-zinc-400">
                       <tr>
                         {[
-                          "Scenario",
-                          "Rank",
-                          "Score Δ",
-                          "Dividend Δ",
-                          "Tech Δ",
-                          "Defensive Δ",
-                          "Concentration Δ",
+                          ws.scenario,
+                          ws.rank,
+                          ws.scoreDelta,
+                          ws.dividendDelta,
+                          ws.techDelta,
+                          ws.defensiveDelta,
+                          ws.concentrationDelta,
                         ].map((label) => (
                           <th key={label} className="px-2 py-2 font-medium">
                             {label}
@@ -1349,11 +1365,11 @@ export default function PortfolioPage() {
 
           <aside className="min-w-0 space-y-6 lg:sticky lg:top-6 lg:self-start">
             <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-5 shadow-2xl shadow-black/20">
-              <h2 className="text-xl font-semibold">AI Portfolio Coach</h2>
+              <h2 className="text-xl font-semibold">{ws.aiPortfolioCoach}</h2>
               <p className="mt-1 text-sm leading-6 text-zinc-400">
-                Ask a plain-language question about the portfolio you entered.
+                {ws.coachHelper}
               </p>
-              <Field label="Question" className="mt-4">
+              <Field label={ws.question} className="mt-4">
                 <textarea
                   value={agentQuestion}
                   onChange={(e) => setAgentQuestion(e.target.value)}
@@ -1367,17 +1383,17 @@ export default function PortfolioPage() {
                 disabled={loading}
                 className="mt-4 w-full rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50"
               >
-                Ask Portfolio Coach
+                {ws.askCoach}
               </button>
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-5 shadow-2xl shadow-black/20">
-              <h2 className="text-xl font-semibold">Scenario Simulator</h2>
+              <h2 className="text-xl font-semibold">{ws.scenarioSimulator}</h2>
               <p className="mt-1 text-sm leading-6 text-zinc-400">
-                Model a simple sell and buy action without changing your saved workspace.
+                {ws.scenarioSimulatorHelper}
               </p>
               <div className="mt-4 space-y-4">
-                <Field label="Sell ticker">
+                <Field label={ws.sellTicker}>
                   <input
                     value={scenarioForm.sellTicker}
                     onChange={(e) =>
@@ -1388,7 +1404,7 @@ export default function PortfolioPage() {
                   />
                 </Field>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  <Field label="Sell shares">
+                  <Field label={ws.sellShares}>
                     <input
                       value={scenarioForm.sellShares}
                       onChange={(e) =>
@@ -1398,7 +1414,7 @@ export default function PortfolioPage() {
                       className={inputClassName}
                     />
                   </Field>
-                  <Field label="Sell %">
+                  <Field label={ws.sellPercent}>
                     <input
                       value={scenarioForm.sellPercentage}
                       onChange={(e) =>
@@ -1412,7 +1428,7 @@ export default function PortfolioPage() {
                     />
                   </Field>
                 </div>
-                <Field label="Buy ticker / fund">
+                <Field label={ws.buyTicker}>
                   <input
                     value={scenarioForm.buyTicker}
                     onChange={(e) =>
@@ -1422,7 +1438,7 @@ export default function PortfolioPage() {
                     className={inputClassName}
                   />
                 </Field>
-                <Field label="Buy amount">
+                <Field label={ws.buyAmount}>
                   <input
                     value={scenarioForm.buyAmount}
                     onChange={(e) =>
@@ -1432,7 +1448,7 @@ export default function PortfolioPage() {
                     className={inputClassName}
                   />
                 </Field>
-                <Field label="Buy name">
+                <Field label={ws.buyName}>
                   <input
                     value={scenarioForm.buyName}
                     onChange={(e) =>
@@ -1442,7 +1458,7 @@ export default function PortfolioPage() {
                     className={inputClassName}
                   />
                 </Field>
-                <Field label="Scenario question">
+                <Field label={ws.scenarioQuestion}>
                   <textarea
                     value={scenarioForm.question}
                     onChange={(e) =>
@@ -1458,33 +1474,33 @@ export default function PortfolioPage() {
                   disabled={loading || normalizedHoldings.length === 0}
                   className="w-full rounded-xl border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50"
                 >
-                  Run Scenario
+                  {ws.runScenario}
                 </button>
               </div>
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
-              <h2 className="text-xl font-semibold">Scenario Result</h2>
+              <h2 className="text-xl font-semibold">{ws.scenarioResult}</h2>
               {!scenario ? (
                 <EmptyState
-                  title="No scenario result yet"
-                  body="Run a scenario to see before/after value, dividend change, and risk tradeoffs."
+                  title={ws.noScenarioTitle}
+                  body={ws.noScenarioBody}
                 />
               ) : (
                 <div className="mt-4 space-y-4">
                   <p className="text-sm leading-6 text-zinc-300">{scenario.recommendation}</p>
                   <div className="grid gap-3">
-                    <MetricCard label="Before Value" value={scenario.before.total_current_value} />
-                    <MetricCard label="After Value" value={scenario.after.total_current_value} />
-                    <MetricCard label="Dividend Change" value={scenario.dividend_change} />
+                    <MetricCard label={ws.beforeValue} value={scenario.before.total_current_value} />
+                    <MetricCard label={ws.afterValue} value={scenario.after.total_current_value} />
+                    <MetricCard label={ws.dividendChange} value={scenario.dividend_change} />
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-                    <h3 className="font-semibold">Risk Tradeoff</h3>
+                    <h3 className="font-semibold">{ws.riskTradeoff}</h3>
                     <p className="mt-2 text-sm leading-6 text-zinc-300">
                       {scenario.risk_change_summary}
                     </p>
                   </div>
-                  <ListCard title="Caveats" items={scenario.caveats} emptyLabel="No caveats." />
+                  <ListCard title={ws.caveats} items={scenario.caveats} emptyLabel={ws.noCaveats} />
                 </div>
               )}
             </section>
@@ -1652,9 +1668,15 @@ function MetricCard({
 function ExposureCard({
   title,
   items,
+  copy,
 }: {
   title: string;
   items: Record<string, number>;
+  copy: {
+    noExposure: string;
+    showMore: string;
+    more: string;
+  };
 }) {
   const entries = Object.entries(items).sort(([, a], [, b]) => b - a);
   const primaryEntries = entries.slice(0, 3);
@@ -1680,14 +1702,14 @@ function ExposureCard({
       <h3 className="font-semibold">{title}</h3>
       <div className="mt-4 space-y-3">
         {entries.length === 0 ? (
-          <p className="text-sm text-zinc-400">No exposure data available.</p>
+          <p className="text-sm text-zinc-400">{copy.noExposure}</p>
         ) : (
           <>
             {primaryEntries.map(renderExposure)}
             {remainingEntries.length > 0 ? (
               <details className="pt-1">
                 <summary className="cursor-pointer text-xs text-zinc-500">
-                  Show {remainingEntries.length} more
+                  {copy.showMore} {remainingEntries.length} {copy.more}
                 </summary>
                 <div className="mt-3 space-y-3">
                   {remainingEntries.map(renderExposure)}
@@ -1756,11 +1778,19 @@ function scoreTone(value: number | null | undefined): "good" | "warning" | "dang
   return "danger";
 }
 
-function scoreLabel(value: number | null | undefined): string {
+function scoreLabel(
+  value: number | null | undefined,
+  copy: {
+    healthy: string;
+    needsReview: string;
+    highAttention: string;
+    notScored: string;
+  },
+): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    return "Not scored";
+    return copy.notScored;
   }
-  if (value >= 75) return "Healthy";
-  if (value >= 50) return "Needs review";
-  return "High attention";
+  if (value >= 75) return copy.healthy;
+  if (value >= 50) return copy.needsReview;
+  return copy.highAttention;
 }
