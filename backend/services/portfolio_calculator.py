@@ -268,6 +268,54 @@ def detect_risk_flags(holdings: list[HoldingMetrics]) -> list[str]:
     return flags
 
 
+def compute_risk_attribution(holdings: list[HoldingMetrics]) -> dict[str, float]:
+    if not holdings:
+        return {}
+
+    top_weight = max((metric.portfolio_weight_pct or 0) for metric in holdings)
+    tech_weight = sum(
+        metric.portfolio_weight_pct or 0
+        for metric in holdings
+        if metric.theme == "Technology / AI"
+    )
+    defensive_weight = sum(
+        metric.portfolio_weight_pct or 0
+        for metric in holdings
+        if metric.theme in {"Defensive / Income", "Bond / Rate-sensitive"}
+    )
+    duration_weight = sum(
+        metric.portfolio_weight_pct or 0
+        for metric in holdings
+        if metric.theme == "Bond / Rate-sensitive"
+    )
+    loss_weight = sum(
+        metric.portfolio_weight_pct or 0
+        for metric in holdings
+        if (metric.return_pct or 0) <= -30
+    )
+    total_dividends = sum(metric.estimated_annual_dividend or 0 for metric in holdings)
+    leading_dividend = max(
+        (metric.estimated_annual_dividend or 0 for metric in holdings),
+        default=0.0,
+    )
+    dividend_concentration = (
+        leading_dividend / total_dividends * 100 if total_dividends else 0.0
+    )
+
+    raw = {
+        "single_position_concentration": max(top_weight - 20, 0),
+        "technology_theme_exposure": max(tech_weight - 40, 0),
+        "defensive_allocation_gap": max(10 - defensive_weight, 0) * 2,
+        "large_unrealized_loss_exposure": loss_weight,
+        "duration_rate_sensitivity": max(duration_weight - 10, 0),
+        "dividend_source_concentration": max(dividend_concentration - 40, 0),
+    }
+    total = sum(raw.values())
+    if total <= 0:
+        return {key: 0.0 for key in raw}
+    return {key: round(value / total * 100, 2) for key, value in raw.items()}
+
+
 def compute_health_scores(holdings: list[HoldingMetrics]) -> dict[str, int]:
     if not holdings:
         return {
@@ -452,6 +500,7 @@ def calculate_portfolio_metrics(
         sector_exposure=compute_exposure(holdings, "sector"),
         theme_exposure=compute_exposure(holdings, "theme"),
         market_exposure=compute_exposure(holdings, "market"),
+        risk_attribution=compute_risk_attribution(holdings),
         risk_flags=risk_flags,
         summary=summary,
         suggestions=suggestions,

@@ -378,6 +378,7 @@ def build_portfolio_evidence_bundle(
     portfolio: PortfolioRequest,
     analysis: Any,
     enrichment: dict[str, dict[str, Any]],
+    investor_memory: dict[str, Any] | None = None,
     scenario_output: Any | None = None,
     comparison_output: Any | None = None,
 ) -> AgentEvidenceBundle:
@@ -388,10 +389,12 @@ def build_portfolio_evidence_bundle(
             "user_question": task.user_question,
             "target_ticker_or_fund": task.target_ticker_or_fund,
             "task_type": task.task_type,
+            "investor_memory": investor_memory or {},
         },
         derived_metrics={
             "portfolio_analysis": analysis.model_dump(mode="json"),
             "portfolio_targets": targets,
+            "investor_memory": investor_memory or {},
             "portfolio_scenario": (
                 scenario_output.model_dump(mode="json")
                 if scenario_output is not None and hasattr(scenario_output, "model_dump")
@@ -450,6 +453,12 @@ def execute_agent_task(
             aggregated_evidence=aggregated_evidence,
         )
         output = synthesise_agent_output(bundle, plan)
+        if store is not None:
+            store.record_investor_history(
+                task.task_type.value,
+                task.tickers or legacy_plan.tickers,
+                raw_query=raw_query,
+            )
         return AgentResult(
             task=task,
             plan=plan,
@@ -469,6 +478,7 @@ def execute_agent_task(
         portfolio = record.portfolio
 
     analysis, enrichment = analyze_portfolio_with_evidence(portfolio)
+    investor_memory = store.get_investor_memory_snapshot().model_dump(mode="json")
     scenario_output = None
     comparison_output = None
 
@@ -496,6 +506,7 @@ def execute_agent_task(
         portfolio=portfolio,
         analysis=analysis,
         enrichment=enrichment,
+        investor_memory=investor_memory,
         scenario_output=scenario_output,
         comparison_output=comparison_output,
     )

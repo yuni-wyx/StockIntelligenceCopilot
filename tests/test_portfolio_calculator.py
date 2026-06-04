@@ -129,6 +129,10 @@ class PortfolioCalculatorTest(unittest.TestCase):
         self.assertIn("technology", combined_flags.lower())
         self.assertIn("2204.TW", combined_flags)
         self.assertLess(result.concentration_score, 100)
+        self.assertIn("single_position_concentration", result.risk_attribution)
+        self.assertIn("technology_theme_exposure", result.risk_attribution)
+        self.assertGreater(result.risk_attribution["single_position_concentration"], 0)
+        self.assertAlmostEqual(sum(result.risk_attribution.values()), 100.0, places=1)
 
 
 if __name__ == "__main__":

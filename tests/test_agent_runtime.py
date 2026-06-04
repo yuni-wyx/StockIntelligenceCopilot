@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -102,6 +103,58 @@ class AgentRuntimeTest(unittest.TestCase):
 
         self.assertEqual(result.output.ticker, "TSLA")
         self.assertEqual(result.output_type, "TradingDecisionOutput")
+
+    def test_execute_agent_task_records_research_history(self) -> None:
+        from backend.pipeline.agent_runtime import execute_agent_task
+        from backend.schemas.agent import (
+            AgentEvidenceBundle,
+            AgentPlan,
+            AgentTask,
+            AgentTaskType,
+        )
+        from backend.schemas.output_schema import TradingDecisionOutput
+        from backend.services.portfolio_store import PortfolioStore
+
+        task = AgentTask(task_type=AgentTaskType.RESEARCH, tickers=["TSLA"])
+        plan = AgentPlan(
+            task_type=AgentTaskType.RESEARCH,
+            summary="Research TSLA",
+            expected_outputs=["fundamental_summary"],
+        )
+        mocked_output = TradingDecisionOutput(
+            ticker="TSLA",
+            bias="Neutral",
+            buy_zone="Current reference: $100.00",
+            stop_loss="$95.00",
+            take_profit="$108.00",
+            confidence=45,
+            reasoning=["Grounded setup."],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = PortfolioStore(Path(tmp_dir) / "portfolio.sqlite3")
+            with patch(
+                "backend.pipeline.agent_runtime.classify_and_plan",
+                return_value=("intent", object()),
+            ), patch(
+                "backend.pipeline.agent_runtime.retrieve_evidence",
+                return_value=([], object()),
+            ), patch(
+                "backend.pipeline.agent_runtime.build_agent_plan_from_execution_plan",
+                return_value=plan,
+            ), patch(
+                "backend.pipeline.agent_runtime.build_agent_evidence_from_aggregated_evidence",
+                return_value=AgentEvidenceBundle(context={"raw_query": "research TSLA"}),
+            ), patch(
+                "backend.pipeline.agent_runtime.synthesise_agent_output",
+                return_value=mocked_output,
+            ):
+                execute_agent_task(task, store=store)
+
+            snapshot = store.get_investor_memory_snapshot()
+
+        self.assertEqual(snapshot.prior_research_history[0].event_type, "research")
+        self.assertEqual(snapshot.prior_research_history[0].tickers, ["TSLA"])
 
     def test_stream_agent_task_emits_start_final_and_done_events(self) -> None:
         from backend.pipeline.agent_runtime import stream_agent_task

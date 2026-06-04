@@ -1104,6 +1104,31 @@ export default function PortfolioPage() {
                           items={analysis.risk_flags}
                           emptyLabel={ws.noRiskFlags}
                         />
+                        {analysis.risk_attribution && Object.keys(analysis.risk_attribution).length > 0 ? (
+                          <div className="mt-4">
+                            <h4 className="text-sm font-medium text-zinc-200">{ws.riskAttribution}</h4>
+                            <div className="mt-3 space-y-3">
+                              {Object.entries(analysis.risk_attribution)
+                                .filter(([, value]) => value > 0)
+                                .sort(([, a], [, b]) => b - a)
+                                .slice(0, 4)
+                                .map(([label, value]) => (
+                                  <div key={label}>
+                                    <div className="flex items-center justify-between gap-3 text-xs text-zinc-400">
+                                      <span className="break-words">{label.replaceAll("_", " ")}</span>
+                                      <span>{formatNumber(value)}%</span>
+                                    </div>
+                                    <div className="mt-1 h-2 rounded-full bg-white/10">
+                                      <div
+                                        className="h-2 rounded-full bg-amber-100"
+                                        style={{ width: `${Math.min(value, 100)}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </InsightPanel>
 
                       <InsightPanel

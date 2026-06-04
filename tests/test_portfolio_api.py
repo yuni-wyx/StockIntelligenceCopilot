@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -62,6 +63,29 @@ class PortfolioApiTest(unittest.TestCase):
 
         self.assertEqual(payload["total_current_value"], 120.0)
         self.assertEqual(payload["holdings"][0]["ticker"], "00878.TW")
+
+    def test_investor_profile_routes_persist_memory(self) -> None:
+        import backend.main as main
+        from backend.schemas.portfolio import InvestorProfileUpdate
+        from backend.services.portfolio_store import PortfolioStore
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = PortfolioStore(Path(tmp_dir) / "portfolio.sqlite3")
+            with patch.object(main, "portfolio_store", store):
+                saved = main.api_investor_profile_update(
+                    InvestorProfileUpdate(
+                        risk_tolerance="moderate",
+                        investment_style="growth",
+                        preferred_sectors=["Technology"],
+                        time_horizon="5 years",
+                    )
+                )
+                loaded = main.api_investor_profile()
+                memory = main.api_investor_memory()
+
+        self.assertEqual(saved["risk_tolerance"], "moderate")
+        self.assertEqual(loaded["investment_style"], "growth")
+        self.assertEqual(memory["profile"]["preferred_sectors"], ["Technology"])
 
 
 if __name__ == "__main__":

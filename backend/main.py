@@ -41,6 +41,7 @@ if __package__:
         WatchlistMonitorOutput,
     )
     from .schemas.portfolio import (
+        InvestorProfileUpdate,
         PortfolioAgentRequest,
         PortfolioRequest,
         PortfolioSaveRequest,
@@ -77,6 +78,7 @@ else:
         WatchlistMonitorOutput,
     )
     from schemas.portfolio import (
+        InvestorProfileUpdate,
         PortfolioAgentRequest,
         PortfolioRequest,
         PortfolioSaveRequest,
@@ -271,6 +273,21 @@ def api_portfolio_list() -> dict:
             for item in portfolio_store.list_saved_portfolios()
         ]
     }
+
+
+@app.get("/api/investor/profile")
+def api_investor_profile() -> dict:
+    return serialize_output(portfolio_store.get_investor_profile())
+
+
+@app.put("/api/investor/profile")
+def api_investor_profile_update(req: InvestorProfileUpdate) -> dict:
+    return serialize_output(portfolio_store.update_investor_profile(req))
+
+
+@app.get("/api/investor/memory")
+def api_investor_memory() -> dict:
+    return serialize_output(portfolio_store.get_investor_memory_snapshot())
 
 
 # ── CLI renderer path (streaming UI) ─────────────────────────────────────────

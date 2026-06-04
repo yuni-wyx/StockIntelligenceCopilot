@@ -143,6 +143,7 @@ export const messages = {
       review: "Review",
       clear: "Clear",
       noRiskFlags: "No major risk flags detected.",
+      riskAttribution: "Risk Attribution",
       recommendedNextSteps: "Recommended Next Steps",
       nextStepsHelper:
         "Actionable ideas from the portfolio analysis and, when available, the AI coach.",
@@ -399,6 +400,7 @@ export const messages = {
       review: "請檢視",
       clear: "暫無警訊",
       noRiskFlags: "目前沒有偵測到主要風險旗標。",
+      riskAttribution: "風險歸因",
       recommendedNextSteps: "下一步建議",
       nextStepsHelper: "來自投資組合分析，以及可用時來自 AI 教練的行動想法。",
       noSuggestions: "目前沒有建議。",

@@ -80,6 +80,7 @@ export type PortfolioAnalysisResponse = {
   sector_exposure: Record<string, number>;
   theme_exposure: Record<string, number>;
   market_exposure: Record<string, number>;
+  risk_attribution?: Record<string, number>;
   risk_flags: string[];
   summary: string;
   suggestions: string[];
@@ -129,6 +130,27 @@ export type PortfolioAgentResponse = {
   suggested_next_actions: string[];
   risks: string[];
   missing_data: string[];
+};
+
+export type InvestorProfile = {
+  risk_tolerance?: string | null;
+  investment_style?: string | null;
+  preferred_sectors: string[];
+  time_horizon?: string | null;
+  updated_at?: string | null;
+};
+
+export type InvestorHistoryEntry = {
+  event_type: "research" | "explain" | "trade" | "watchlist";
+  tickers: string[];
+  raw_query?: string | null;
+  created_at: string;
+};
+
+export type InvestorMemorySnapshot = {
+  profile: InvestorProfile;
+  watchlist_history: InvestorHistoryEntry[];
+  prior_research_history: InvestorHistoryEntry[];
 };
 
 export async function analyzePortfolio(payload: {
@@ -224,6 +246,36 @@ export async function askPortfolioAgent(payload: {
   });
   if (!res.ok) {
     throw new Error("Failed to get portfolio agent response.");
+  }
+  return res.json();
+}
+
+export async function getInvestorProfile(): Promise<InvestorProfile> {
+  const res = await fetch(buildApiUrl("/investor/profile"));
+  if (!res.ok) {
+    throw new Error("Failed to load investor profile.");
+  }
+  return res.json();
+}
+
+export async function updateInvestorProfile(
+  payload: Omit<InvestorProfile, "updated_at">,
+): Promise<InvestorProfile> {
+  const res = await fetch(buildApiUrl("/investor/profile"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error("Failed to update investor profile.");
+  }
+  return res.json();
+}
+
+export async function getInvestorMemory(): Promise<InvestorMemorySnapshot> {
+  const res = await fetch(buildApiUrl("/investor/memory"));
+  if (!res.ok) {
+    throw new Error("Failed to load investor memory.");
   }
   return res.json();
 }

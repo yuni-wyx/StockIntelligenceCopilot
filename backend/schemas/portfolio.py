@@ -65,6 +65,7 @@ class PortfolioAnalysisResponse(BaseModel):
     sector_exposure: dict[str, float] = Field(default_factory=dict)
     theme_exposure: dict[str, float] = Field(default_factory=dict)
     market_exposure: dict[str, float] = Field(default_factory=dict)
+    risk_attribution: dict[str, float] = Field(default_factory=dict)
     risk_flags: list[str]
     summary: str
     suggestions: list[str]
@@ -166,3 +167,31 @@ class PortfolioAgentResponse(BaseModel):
     suggested_next_actions: list[str]
     risks: list[str]
     missing_data: list[str]
+
+
+class InvestorProfile(BaseModel):
+    risk_tolerance: str | None = None
+    investment_style: str | None = None
+    preferred_sectors: list[str] = Field(default_factory=list)
+    time_horizon: str | None = None
+    updated_at: datetime | None = None
+
+
+class InvestorProfileUpdate(BaseModel):
+    risk_tolerance: str | None = None
+    investment_style: str | None = None
+    preferred_sectors: list[str] = Field(default_factory=list)
+    time_horizon: str | None = None
+
+
+class InvestorHistoryEntry(BaseModel):
+    event_type: Literal["research", "explain", "trade", "watchlist"]
+    tickers: list[str] = Field(default_factory=list)
+    raw_query: str | None = None
+    created_at: datetime
+
+
+class InvestorMemorySnapshot(BaseModel):
+    profile: InvestorProfile
+    watchlist_history: list[InvestorHistoryEntry] = Field(default_factory=list)
+    prior_research_history: list[InvestorHistoryEntry] = Field(default_factory=list)

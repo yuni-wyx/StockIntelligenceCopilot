@@ -39,6 +39,12 @@ def _fallback_agent_response(
     evidence: dict,
     question: str | None,
 ) -> PortfolioAgentResponse:
+    investor_memory = evidence.get("investor_memory") or {}
+    profile = investor_memory.get("profile") or {}
+    risk_tolerance = profile.get("risk_tolerance")
+    investment_style = profile.get("investment_style")
+    preferred_sectors = profile.get("preferred_sectors") or []
+    time_horizon = profile.get("time_horizon")
     largest = max(
         analysis.holdings,
         key=lambda item: item.portfolio_weight_pct or 0,
@@ -50,6 +56,11 @@ def _fallback_agent_response(
     )
     if question:
         conclusion = f"{conclusion} User question: {question}"
+    if risk_tolerance or investment_style or time_horizon:
+        conclusion = (
+            f"{conclusion} Investor profile: risk tolerance={risk_tolerance or 'unknown'}, "
+            f"style={investment_style or 'unknown'}, horizon={time_horizon or 'unknown'}."
+        )
 
     key_numbers = {
         "total_current_value": analysis.total_current_value,
@@ -57,6 +68,9 @@ def _fallback_agent_response(
         "total_return_pct": analysis.total_return_pct,
         "estimated_annual_dividend": analysis.estimated_annual_dividend,
         "overall_score": analysis.overall_score,
+        "risk_tolerance": risk_tolerance,
+        "investment_style": investment_style,
+        "time_horizon": time_horizon,
     }
     evidence_used = [
         f"Top holdings reviewed: {', '.join(evidence['targets']['top_holdings']) or 'none'}",
@@ -65,6 +79,33 @@ def _fallback_agent_response(
     if largest:
         evidence_used.append(
             f"Largest holding: {largest.ticker} at {largest.portfolio_weight_pct or 0:.2f}%."
+        )
+    if preferred_sectors:
+        evidence_used.append(
+            "Preferred sectors considered: "
+            + ", ".join(str(sector) for sector in preferred_sectors)
+        )
+    if investor_memory.get("prior_research_history"):
+        researched = sorted(
+            {
+                ticker
+                for entry in investor_memory.get("prior_research_history", [])
+                for ticker in entry.get("tickers", [])
+            }
+        )
+        if researched:
+            evidence_used.append("Prior research history considered: " + ", ".join(researched[:8]))
+
+    suggested_next_actions = list(analysis.suggestions)
+    if risk_tolerance and "low" in str(risk_tolerance).lower():
+        suggested_next_actions.append(
+            "Because your saved profile is lower risk tolerance, review downside "
+            "and defensive allocation before adding growth exposure."
+        )
+    if preferred_sectors:
+        suggested_next_actions.append(
+            "Compare any new allocation against your preferred sectors before "
+            "changing the portfolio."
         )
     return PortfolioAgentResponse(
         conclusion=conclusion,
@@ -83,7 +124,7 @@ def _fallback_agent_response(
             "Base case: trim only the most concentrated exposures gradually, "
             "and compare income loss before reallocating."
         ),
-        suggested_next_actions=analysis.suggestions,
+        suggested_next_actions=suggested_next_actions[:8],
         risks=analysis.risk_flags,
         missing_data=analysis.missing_data,
     )
@@ -139,6 +180,7 @@ def synthesise_portfolio_agent_output(
         "analysis": analysis.model_dump(mode="json"),
         "targets": bundle.derived_metrics.get("portfolio_targets", {}),
         "tool_evidence": bundle.external_evidence.get("holdings", {}),
+        "investor_memory": bundle.derived_metrics.get("investor_memory", {}),
     }
     question = bundle.context.get("user_question")
     chain = _build_llm_chain()
@@ -176,6 +218,7 @@ def _run_portfolio_agent_impl(
         "analysis": analysis.model_dump(mode="json"),
         "targets": {},
         "tool_evidence": enrichment,
+        "investor_memory": store.get_investor_memory_snapshot().model_dump(mode="json"),
     }
     return _fallback_agent_response(analysis, evidence, request.user_question)
 

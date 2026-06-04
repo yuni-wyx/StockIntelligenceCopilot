@@ -44,6 +44,38 @@ class PortfolioStoreTest(unittest.TestCase):
             self.assertTrue(deleted)
             self.assertIsNone(store.load_portfolio("current"))
 
+    def test_investor_profile_memory_and_history_are_persistent(self) -> None:
+        from backend.schemas.portfolio import InvestorProfileUpdate
+        from backend.services.portfolio_store import PortfolioStore
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = PortfolioStore(Path(tmp_dir) / "portfolio.sqlite3")
+            profile = store.update_investor_profile(
+                InvestorProfileUpdate(
+                    risk_tolerance="low",
+                    investment_style="income",
+                    preferred_sectors=["Technology", "Healthcare"],
+                    time_horizon="3-5 years",
+                )
+            )
+            store.record_investor_history(
+                "research",
+                ["NVDA"],
+                raw_query="research NVDA",
+            )
+            store.record_investor_history(
+                "watchlist",
+                ["NVDA", "2330.TW"],
+                raw_query="watchlist NVDA 2330.TW",
+            )
+
+            snapshot = store.get_investor_memory_snapshot()
+
+            self.assertEqual(profile.risk_tolerance, "low")
+            self.assertEqual(snapshot.profile.investment_style, "income")
+            self.assertEqual(snapshot.prior_research_history[0].tickers, ["NVDA"])
+            self.assertEqual(snapshot.watchlist_history[0].tickers, ["NVDA", "2330.TW"])
+
 
 if __name__ == "__main__":
     unittest.main()
