@@ -41,6 +41,11 @@ export const messages = {
       eyebrow: "Wealth Studio",
       subtitle:
         "A calmer workspace for reviewing holdings, saving your local setup, asking portfolio questions, and testing reallocation ideas.",
+      holdingsSection: "Holdings",
+      analysisSection: "Analysis",
+      ideasSection: "Ideas",
+      ideasSectionHelper:
+        "Start with one portfolio question. Scenario and workspace tools stay available below as advanced options.",
       home: "Home",
       researchMode: "Research Mode",
       firstRunTitle: "Start in three steps",
@@ -103,7 +108,7 @@ export const messages = {
       noSavedBody:
         "Use Save Workspace after entering your holdings, or Load Saved if you already created a local demo portfolio.",
       holdingsCount: "Holdings",
-      portfolioInsights: "Portfolio Insights",
+      portfolioInsights: "Portfolio Snapshot",
       insightsHelper:
         "Portfolio snapshot, risk, allocation, income, and next-step signals after analysis.",
       analyzingTitle: "Analyzing your holdings",
@@ -144,9 +149,9 @@ export const messages = {
       clear: "Clear",
       noRiskFlags: "No major risk flags detected.",
       riskAttribution: "Risk Attribution",
-      recommendedNextSteps: "Recommended Next Steps",
+      recommendedNextSteps: "Suggested Review Items",
       nextStepsHelper:
-        "Actionable ideas from the portfolio analysis and, when available, the AI coach.",
+        "Heuristic follow-up checks from the current analysis. Use them as review prompts, not financial advice.",
       noSuggestions: "No suggestions available.",
       aiCoach: "AI Coach",
       coachActions: "Coach Actions",
@@ -201,6 +206,9 @@ export const messages = {
       coachHelper: "Ask a plain-language question about the portfolio you entered.",
       question: "Question",
       askCoach: "Ask Portfolio Coach",
+      advancedScenarioTools: "Advanced scenario tools",
+      advancedScenarioToolsHelper:
+        "Optional planning tools for scenario simulation, comparison, and power-user JSON editing.",
       scenarioSimulator: "Scenario Simulator",
       scenarioSimulatorHelper:
         "Quick one-off change: test one simple sell/buy idea without changing your saved workspace.",
@@ -252,6 +260,9 @@ export const messages = {
       advancedJsonEditor: "Advanced JSON editor",
       advancedJsonHelper:
         "Kept for compatibility and power users. It is used only when no structured scenarios are added above.",
+      detailedExposureSection: "Detailed exposure, monitoring, and evidence",
+      detailedExposureHelper:
+        "Open this when you want full allocation detail, holding-level rows, linked headlines, and evidence traceability.",
       validationScenarioTitle: "Please fix these scenario details",
       scenarioTickerRequired: "ticker is required.",
       scenarioPercentageRequired: "percentage is required.",
@@ -307,6 +318,11 @@ export const messages = {
       eyebrow: "投資工作室",
       subtitle:
         "用比較輕鬆的方式檢視持股、儲存本機工作區、詢問投資組合問題，並測試調整情境。",
+      holdingsSection: "持股",
+      analysisSection: "分析",
+      ideasSection: "想法與下一步",
+      ideasSectionHelper:
+        "先問一個投資組合問題即可。情境與工作區工具仍保留在下方的進階區塊。",
       home: "首頁",
       researchMode: "研究模式",
       firstRunTitle: "三步驟開始",
@@ -363,7 +379,7 @@ export const messages = {
       noSavedTitle: "尚未載入已儲存的工作區",
       noSavedBody: "輸入持股後可儲存工作區；如果已儲存過，也可以直接載入。",
       holdingsCount: "持股數",
-      portfolioInsights: "投資組合洞察",
+      portfolioInsights: "投資組合快照",
       insightsHelper: "分析後檢視投資組合快照、風險、配置、收益與下一步訊號。",
       analyzingTitle: "正在分析持股",
       analyzingBody: "正在整理投資組合快照、風險、曝險與下一步建議。",
@@ -374,7 +390,7 @@ export const messages = {
       overallHealthHelper:
         "以較保守的方式檢視平衡度、集中度、收益、防禦配置與成長傾向。",
       heuristicEstimate: "啟發式估計",
-      heuristicDisclaimer: "這些洞察是啟發式估計，不是財務建議。",
+      heuristicDisclaimer: "這些內容是啟發式估計，不構成投資建議。",
       low: "低",
       moderate: "中",
       high: "高",
@@ -401,8 +417,8 @@ export const messages = {
       clear: "暫無警訊",
       noRiskFlags: "目前沒有偵測到主要風險旗標。",
       riskAttribution: "風險歸因",
-      recommendedNextSteps: "下一步建議",
-      nextStepsHelper: "來自投資組合分析，以及可用時來自 AI 教練的行動想法。",
+      recommendedNextSteps: "建議檢查事項",
+      nextStepsHelper: "這些是根據目前分析整理出的啟發式檢查方向，不是財務建議。",
       noSuggestions: "目前沒有建議。",
       aiCoach: "AI 教練",
       coachActions: "教練建議行動",
@@ -454,6 +470,9 @@ export const messages = {
       coachHelper: "用白話詢問你剛輸入的投資組合。",
       question: "問題",
       askCoach: "詢問投資教練",
+      advancedScenarioTools: "進階情境工具",
+      advancedScenarioToolsHelper:
+        "提供情境模擬、方案比較與進階 JSON 編輯，平常可先收起來。",
       scenarioSimulator: "情境模擬",
       scenarioSimulatorHelper:
         "快速單次測試：模擬一個簡單買賣想法，不會改動已儲存工作區。",
@@ -502,6 +521,9 @@ export const messages = {
       advancedJsonEditor: "進階 JSON 編輯器",
       advancedJsonHelper:
         "保留給進階使用與相容性。只有在上方沒有結構化情境時才會使用。",
+      detailedExposureSection: "詳細曝險、追蹤資訊與證據",
+      detailedExposureHelper:
+        "需要完整配置明細、持股層級資料、相關新聞與證據來源時再展開查看。",
       validationScenarioTitle: "請修正這些情境設定",
       scenarioTickerRequired: "請填寫標的代號。",
       scenarioPercentageRequired: "請填寫比例。",
@@ -518,3 +540,6 @@ export const messages = {
     },
   },
 } as const;
+
+export type MessageCatalog = (typeof messages)[Locale];
+export type WealthStudioCopy = MessageCatalog["wealthStudio"];

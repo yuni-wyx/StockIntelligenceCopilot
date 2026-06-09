@@ -6,16 +6,23 @@ import test from "node:test";
 const read = (relativePath) =>
   fs.readFileSync(path.resolve(process.cwd(), relativePath), "utf8");
 
-test("portfolio page source exists with holdings UI and add-row entrypoint", () => {
+test("portfolio page coordinates wealth studio sections and extracted components", () => {
   const source = read("src/app/portfolio/page.tsx");
+  const holdingsEditor = read("src/components/wealth-studio/PortfolioHoldingsEditor.tsx");
+  const snapshotPanel = read("src/components/wealth-studio/PortfolioSnapshotPanel.tsx");
+  const coachPanel = read("src/components/wealth-studio/PortfolioCoachPanel.tsx");
   const messages = read("src/i18n/messages.tsx");
-  assert.match(source, /Holdings/);
-  assert.match(source, /analyzeHoldings/);
+  assert.match(source, /PortfolioHoldingsEditor/);
+  assert.match(source, /PortfolioSnapshotPanel/);
+  assert.match(source, /PortfolioCoachPanel/);
+  assert.match(source, /SavedWorkspacesPanel/);
+  assert.match(source, /PortfolioScenarioPanel/);
+  assert.match(holdingsEditor, /addHolding/);
+  assert.match(holdingsEditor, /saveWorkspace/);
+  assert.match(holdingsEditor, /loadSaved/);
+  assert.match(snapshotPanel, /overallHealth/);
+  assert.match(coachPanel, /aiPortfolioCoach/);
   assert.match(source, /addHolding/);
-  assert.match(source, /saveWorkspace/);
-  assert.match(source, /loadSaved/);
-  assert.match(source, /overallHealth/);
-  assert.match(source, /aiPortfolioCoach/);
   assert.match(messages, /Portfolio Snapshot/);
   assert.match(messages, /AI Portfolio Coach/);
 });
