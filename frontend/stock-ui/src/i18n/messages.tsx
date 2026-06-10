@@ -36,6 +36,22 @@ export const messages = {
     move: "Move",
     market: "Market",
     canonicalSymbol: "Canonical symbol",
+    relativeSignal: "Relative Signal",
+    benchmarkRelativeStrength: "Benchmark-relative strength",
+    heuristicEstimateShort: "Heuristic estimate",
+    signalScore: "Signal Score",
+    signalBand: "Signal Band",
+    signalConfidence: "Confidence",
+    signalBenchmark: "Benchmark",
+    signalHorizon: "Horizon",
+    signalPositiveSignals: "Positive Signals",
+    signalNegativeSignals: "Negative Signals",
+    signalDataCaveats: "Data Caveats",
+    signalDisclaimerLabel: "Disclaimer",
+    signalDays: "days",
+    signalLowConfidenceNote: "Low confidence: review caveats before relying on this signal.",
+    signalNoDetailedBreakdown:
+      "Detailed positive and negative signal lists are not separately surfaced in this response.",
     wealthStudio: {
       title: "Wealth Studio",
       eyebrow: "Wealth Studio",
@@ -149,6 +165,31 @@ export const messages = {
       clear: "Clear",
       noRiskFlags: "No major risk flags detected.",
       riskAttribution: "Risk Attribution",
+      portfolioIntelligenceHelper:
+        "Deterministic portfolio intelligence helps surface concentration, downside sensitivity, and income quality without implying financial advice.",
+      downsideContributors: "Largest Downside Contributors",
+      unrealizedLosers: "Largest Unrealized Losers",
+      unrealizedWinners: "Largest Unrealized Winners",
+      stressTestContributors: "Largest Stress-Test Contributors",
+      noStressContributors: "No stress-test contribution data is available yet.",
+      concentrationAnalysis: "Concentration Analysis",
+      topHoldingWeight: "Top Holding Weight",
+      top3HoldingsWeight: "Top 3 Holdings Weight",
+      top5HoldingsWeight: "Top 5 Holdings Weight",
+      topHoldings: "Top Holdings",
+      incomeQuality: "Income Quality",
+      incomeQualitySectionHelper:
+        "Dividend views are estimates from available data and should be monitored, not treated as guaranteed income.",
+      topDividendContributors: "Top Dividend Contributors",
+      dividendConcentration: "Dividend Concentration",
+      missingDividendData: "Missing Dividend Data",
+      noDividendDataMissing: "No missing dividend data was detected for current holdings.",
+      noPortfolioIntelligence: "Additional portfolio intelligence is not available for this analysis yet.",
+      severityLow: "Low",
+      severityMedium: "Medium",
+      severityHigh: "High",
+      evidenceKeys: "Evidence Keys",
+      noReviewItems: "No additional review items were triggered by the current thresholds.",
       recommendedNextSteps: "Suggested Review Items",
       nextStepsHelper:
         "Heuristic follow-up checks from the current analysis. Use them as review prompts, not financial advice.",
@@ -209,6 +250,57 @@ export const messages = {
       advancedScenarioTools: "Advanced scenario tools",
       advancedScenarioToolsHelper:
         "Optional planning tools for scenario simulation, comparison, and power-user JSON editing.",
+      stressTest: "Portfolio Stress Test",
+      stressTestHelper:
+        "Run a simple what-if shock on your current holdings. These calculations are deterministic and meant for review, not prediction.",
+      stressTestBroadMarket: "Broad market -20%",
+      stressTestBroadMarketHelper: "Apply a -20% shock to all holdings with usable current value.",
+      stressTestTechnologySelloff: "Technology selloff -15%",
+      stressTestTechnologySelloffHelper:
+        "Apply a -15% shock to holdings tagged by ticker or labels as technology / AI related.",
+      stressTestTaiwanMarket: "Taiwan market -15%",
+      stressTestTaiwanMarketHelper:
+        "Apply a -15% shock to Taiwan-market holdings, including tickers like 2330 or 2330.TW.",
+      stressTestBondRate: "Bond / rate-sensitive -10%",
+      stressTestBondRateHelper:
+        "Apply a -10% shock to bond and rate-sensitive holdings using asset type, category, or note keywords.",
+      stressTestCustomTicker: "Custom ticker shock",
+      stressTestCustomTickerHelper:
+        "Apply your own shock percentage to one ticker without changing the rest of the portfolio.",
+      stressTestDisclaimer:
+        "Stress tests are hypothetical what-if calculations, not predictions or financial advice.",
+      customTicker: "Custom ticker",
+      stressTestShockPercent: "Shock %",
+      runStressTest: "Run Stress Test",
+      stressTestResult: "Stress Test Result",
+      noStressTestTitle: "No stress test result yet",
+      noStressTestBody:
+        "Choose one preset shock and run it to estimate how your current portfolio value could change.",
+      currentValueStress: "Current Value",
+      stressedValue: "Stressed Value",
+      estimatedImpact: "Estimated Impact",
+      stressTestExplanation: "Explanation",
+      biggestImpactedHoldings: "Biggest Impacted Holdings",
+      appliedShock: "Applied shock",
+      noStressImpact: "No holdings matched this shock rule, so the portfolio stayed unchanged.",
+      stressTestNoValidHoldings:
+        "Add at least one holding with a usable current value before running a stress test.",
+      stressTestCustomTickerRequired:
+        "Enter a ticker when using the custom ticker shock.",
+      stressTestShockRequired: "Enter a shock percentage for the custom ticker shock.",
+      stressTestShockRange: "Shock percentage must be between -100 and 100.",
+      stressTestBroadMarketExplanation:
+        "This scenario applies a broad market drawdown across all currently valued holdings to show total portfolio sensitivity.",
+      stressTestTechnologyExplanation:
+        "This scenario applies a deterministic selloff to holdings that look technology or AI related based on ticker labels and portfolio metadata.",
+      stressTestTaiwanExplanation:
+        "This scenario applies a Taiwan-market drawdown to holdings identified as Taiwan listings or Taiwan-market positions.",
+      stressTestBondExplanation:
+        "This scenario applies a rate-sensitive shock to bond-like holdings based on asset type, category, name, or notes.",
+      stressTestCustomExplanation:
+        "This scenario applies your selected shock only to {ticker}, leaving the rest of the portfolio unchanged.",
+      stressTestNoMatchingHoldings:
+        "No current holdings matched the selected stress rule, so the stress result stayed unchanged.",
       scenarioSimulator: "Scenario Simulator",
       scenarioSimulatorHelper:
         "Quick one-off change: test one simple sell/buy idea without changing your saved workspace.",
@@ -313,6 +405,21 @@ export const messages = {
     move: "漲跌幅",
     market: "市場",
     canonicalSymbol: "標準代號",
+    relativeSignal: "相對訊號",
+    benchmarkRelativeStrength: "相對基準強弱",
+    heuristicEstimateShort: "啟發式估計",
+    signalScore: "訊號分數",
+    signalBand: "訊號區間",
+    signalConfidence: "信心水準",
+    signalBenchmark: "基準",
+    signalHorizon: "觀察天期",
+    signalPositiveSignals: "正向訊號",
+    signalNegativeSignals: "負向訊號",
+    signalDataCaveats: "資料注意事項",
+    signalDisclaimerLabel: "免責說明",
+    signalDays: "天",
+    signalLowConfidenceNote: "目前信心偏低，解讀前請先看資料注意事項。",
+    signalNoDetailedBreakdown: "這次回應沒有分開提供更細的正向／負向訊號清單。",
     wealthStudio: {
       title: "投資工作室",
       eyebrow: "投資工作室",
@@ -417,6 +524,31 @@ export const messages = {
       clear: "暫無警訊",
       noRiskFlags: "目前沒有偵測到主要風險旗標。",
       riskAttribution: "風險歸因",
+      portfolioIntelligenceHelper:
+        "這些確定性投資組合洞察會協助你檢視集中度、下行敏感度與收益品質，但不構成投資建議。",
+      downsideContributors: "下行風險主要來源",
+      unrealizedLosers: "未實現虧損主要來源",
+      unrealizedWinners: "未實現獲利主要來源",
+      stressTestContributors: "壓力測試主要影響來源",
+      noStressContributors: "目前還沒有壓力測試影響分解資料。",
+      concentrationAnalysis: "集中度分析",
+      topHoldingWeight: "最大單一持股權重",
+      top3HoldingsWeight: "前 3 大持股權重",
+      top5HoldingsWeight: "前 5 大持股權重",
+      topHoldings: "主要持股",
+      incomeQuality: "收益品質",
+      incomeQualitySectionHelper:
+        "股息相關內容是依可用資料估算，適合拿來檢查與追蹤，不代表保證收益。",
+      topDividendContributors: "主要股息來源",
+      dividendConcentration: "股息集中度",
+      missingDividendData: "缺少股息資料",
+      noDividendDataMissing: "目前沒有偵測到持股缺少股息資料。",
+      noPortfolioIntelligence: "這次分析尚未提供額外的投資組合 intelligence 資料。",
+      severityLow: "低",
+      severityMedium: "中",
+      severityHigh: "高",
+      evidenceKeys: "證據鍵值",
+      noReviewItems: "目前沒有額外觸發的檢查事項。",
       recommendedNextSteps: "建議檢查事項",
       nextStepsHelper: "這些是根據目前分析整理出的啟發式檢查方向，不是財務建議。",
       noSuggestions: "目前沒有建議。",
@@ -473,6 +605,53 @@ export const messages = {
       advancedScenarioTools: "進階情境工具",
       advancedScenarioToolsHelper:
         "提供情境模擬、方案比較與進階 JSON 編輯，平常可先收起來。",
+      stressTest: "投資組合壓力測試",
+      stressTestHelper:
+        "用簡單的假設衝擊測試目前持股。這些都是確定性試算，用來幫助檢查風險，不是預測。",
+      stressTestBroadMarket: "大盤 -20%",
+      stressTestBroadMarketHelper: "對所有有可用現值的持股套用 -20% 衝擊。",
+      stressTestTechnologySelloff: "科技賣壓 -15%",
+      stressTestTechnologySelloffHelper:
+        "對被代號或標籤判定為科技 / AI 相關的持股套用 -15% 衝擊。",
+      stressTestTaiwanMarket: "台股市場 -15%",
+      stressTestTaiwanMarketHelper:
+        "對台灣市場持股套用 -15% 衝擊，包含像 2330 或 2330.TW 這類標的。",
+      stressTestBondRate: "債券 / 利率敏感 -10%",
+      stressTestBondRateHelper:
+        "依資產類型、分類或備註關鍵字，對債券與利率敏感部位套用 -10% 衝擊。",
+      stressTestCustomTicker: "自訂標的衝擊",
+      stressTestCustomTickerHelper:
+        "只對單一標的套用自訂衝擊比例，其餘持股維持不變。",
+      stressTestDisclaimer: "壓力測試是假設情境試算，不是預測，也不構成投資建議。",
+      customTicker: "自訂標的",
+      stressTestShockPercent: "衝擊比例",
+      runStressTest: "執行壓力測試",
+      stressTestResult: "壓力測試結果",
+      noStressTestTitle: "尚無壓力測試結果",
+      noStressTestBody: "選一個衝擊情境後執行，即可估算目前投資組合現值可能的變化。",
+      currentValueStress: "目前現值",
+      stressedValue: "壓測後現值",
+      estimatedImpact: "估計影響",
+      stressTestExplanation: "說明",
+      biggestImpactedHoldings: "受影響最大的持股",
+      appliedShock: "套用衝擊",
+      noStressImpact: "沒有持股符合這個衝擊規則，所以結果維持不變。",
+      stressTestNoValidHoldings: "請至少先輸入一筆有可用現值的持股，再執行壓力測試。",
+      stressTestCustomTickerRequired: "使用自訂標的衝擊時，請先輸入股票代號。",
+      stressTestShockRequired: "請輸入自訂標的的衝擊比例。",
+      stressTestShockRange: "衝擊比例必須介於 -100 到 100 之間。",
+      stressTestBroadMarketExplanation:
+        "這個情境會對所有目前有估值的持股套用整體市場回檔，幫你查看整體投資組合的敏感度。",
+      stressTestTechnologyExplanation:
+        "這個情境會依股票代號、名稱與持股標籤，對看起來屬於科技或 AI 的部位套用確定性賣壓。",
+      stressTestTaiwanExplanation:
+        "這個情境會對判定為台灣市場的持股套用回檔衝擊，幫你檢查台股曝險的敏感度。",
+      stressTestBondExplanation:
+        "這個情境會依資產類型、分類、名稱或備註，對債券型與利率敏感部位套用衝擊。",
+      stressTestCustomExplanation:
+        "這個情境只會對 {ticker} 套用你指定的衝擊比例，其餘持股維持不變。",
+      stressTestNoMatchingHoldings:
+        "目前沒有持股符合你選擇的壓力測試規則，所以結果維持不變。",
       scenarioSimulator: "情境模擬",
       scenarioSimulatorHelper:
         "快速單次測試：模擬一個簡單買賣想法，不會改動已儲存工作區。",

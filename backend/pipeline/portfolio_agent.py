@@ -72,10 +72,27 @@ def _fallback_agent_response(
         "investment_style": investment_style,
         "time_horizon": time_horizon,
     }
+    portfolio_intelligence = analysis.portfolio_intelligence
     evidence_used = [
         f"Top holdings reviewed: {', '.join(evidence['targets']['top_holdings']) or 'none'}",
         f"Theme exposure: {json.dumps(analysis.theme_exposure, ensure_ascii=False)}",
     ]
+    if portfolio_intelligence is not None:
+        evidence_used.append(
+            "Portfolio intelligence reviewed: concentration, risk attribution, "
+            "income quality, and suggested review items."
+        )
+        if portfolio_intelligence.concentration.top_holding_weight_pct is not None:
+            evidence_used.append(
+                "Top holding weight reviewed: "
+                f"{portfolio_intelligence.concentration.top_holding_weight_pct:.2f}%."
+            )
+        if portfolio_intelligence.income_quality.dividend_concentration_pct is not None:
+            evidence_used.append(
+                "Dividend concentration reviewed: "
+                f"{portfolio_intelligence.income_quality.dividend_concentration_pct:.2f}% "
+                "from the largest estimated income contributor."
+            )
     if largest:
         evidence_used.append(
             f"Largest holding: {largest.ticker} at {largest.portfolio_weight_pct or 0:.2f}%."
@@ -97,6 +114,10 @@ def _fallback_agent_response(
             evidence_used.append("Prior research history considered: " + ", ".join(researched[:8]))
 
     suggested_next_actions = list(analysis.suggestions)
+    if portfolio_intelligence is not None:
+        suggested_next_actions.extend(
+            item.title for item in portfolio_intelligence.suggested_review_items
+        )
     if risk_tolerance and "low" in str(risk_tolerance).lower():
         suggested_next_actions.append(
             "Because your saved profile is lower risk tolerance, review downside "
@@ -141,6 +162,8 @@ Use only the provided evidence.
 Do not invent any numbers.
 If data is missing, say it is missing.
 Do not promise returns or guaranteed outcomes.
+Do not turn suggested review items into buy or sell instructions.
+Keep portfolio intelligence references non-advisory and evidence-based.
 
 User question:
 {question}
@@ -178,6 +201,11 @@ def synthesise_portfolio_agent_output(
     analysis = PortfolioAnalysisResponse(**analysis_payload)
     evidence = {
         "analysis": analysis.model_dump(mode="json"),
+        "portfolio_intelligence": (
+            analysis.portfolio_intelligence.model_dump(mode="json")
+            if analysis.portfolio_intelligence is not None
+            else None
+        ),
         "targets": bundle.derived_metrics.get("portfolio_targets", {}),
         "tool_evidence": bundle.external_evidence.get("holdings", {}),
         "investor_memory": bundle.derived_metrics.get("investor_memory", {}),
@@ -216,6 +244,11 @@ def _run_portfolio_agent_impl(
     analysis, enrichment = analyze_portfolio_with_evidence(portfolio)
     evidence = {
         "analysis": analysis.model_dump(mode="json"),
+        "portfolio_intelligence": (
+            analysis.portfolio_intelligence.model_dump(mode="json")
+            if analysis.portfolio_intelligence is not None
+            else None
+        ),
         "targets": {},
         "tool_evidence": enrichment,
         "investor_memory": store.get_investor_memory_snapshot().model_dump(mode="json"),

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -66,6 +67,15 @@ class PortfolioCalculatorTest(unittest.TestCase):
         self.assertIn("Defensive / Income", result.theme_exposure)
         self.assertGreater(result.overall_score, 0)
         self.assertIn("TW", result.market_exposure)
+        self.assertIsNotNone(result.portfolio_intelligence)
+        self.assertGreater(
+            result.portfolio_intelligence.concentration.top_holding_weight_pct or 0,
+            0,
+        )
+        self.assertIsInstance(
+            result.portfolio_intelligence.suggested_review_items,
+            list,
+        )
 
     def test_avg_cost_without_shares_does_not_fake_cost_basis(self) -> None:
         from backend.schemas.portfolio import HoldingInput, PortfolioRequest
@@ -133,6 +143,37 @@ class PortfolioCalculatorTest(unittest.TestCase):
         self.assertIn("technology_theme_exposure", result.risk_attribution)
         self.assertGreater(result.risk_attribution["single_position_concentration"], 0)
         self.assertAlmostEqual(sum(result.risk_attribution.values()), 100.0, places=1)
+
+    def test_calculate_portfolio_metrics_survives_intelligence_failure(self) -> None:
+        from backend.schemas.portfolio import HoldingInput, PortfolioRequest
+        from backend.services.portfolio_calculator import calculate_portfolio_metrics
+
+        request = PortfolioRequest(
+            holdings=[
+                HoldingInput(
+                    ticker="00878.TW",
+                    current_price=32.06,
+                    shares=100,
+                    avg_cost=21.76,
+                )
+            ],
+            base_currency="TWD",
+        )
+
+        with patch(
+            "backend.services.portfolio_calculator.build_portfolio_intelligence_snapshot",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = calculate_portfolio_metrics(request)
+
+        self.assertIsNone(result.portfolio_intelligence)
+        self.assertIsNotNone(result.total_current_value)
+        self.assertTrue(
+            any(
+                "Portfolio intelligence details were unavailable" in item
+                for item in result.missing_data
+            )
+        )
 
 
 if __name__ == "__main__":

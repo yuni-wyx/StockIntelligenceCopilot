@@ -25,6 +25,10 @@ class PortfolioApiTest(unittest.TestCase):
             HoldingMetrics,
             PortfolioAnalysisResponse,
         )
+        from backend.schemas.portfolio_intelligence import (
+            ConcentrationSnapshot,
+            PortfolioIntelligenceSnapshot,
+        )
 
         mocked = PortfolioAnalysisResponse(
             total_cost_basis=100.0,
@@ -40,6 +44,9 @@ class PortfolioApiTest(unittest.TestCase):
             risk_flags=[],
             summary="ok",
             suggestions=["keep diversified"],
+            portfolio_intelligence=PortfolioIntelligenceSnapshot(
+                concentration=ConcentrationSnapshot(top_holding_weight_pct=55.0)
+            ),
         )
 
         mocked_result = AgentResult(
@@ -63,6 +70,60 @@ class PortfolioApiTest(unittest.TestCase):
 
         self.assertEqual(payload["total_current_value"], 120.0)
         self.assertEqual(payload["holdings"][0]["ticker"], "00878.TW")
+        self.assertIn("portfolio_intelligence", payload)
+        self.assertEqual(
+            payload["portfolio_intelligence"]["concentration"]["top_holding_weight_pct"],
+            55.0,
+        )
+
+    def test_api_portfolio_analyze_keeps_working_when_intelligence_is_absent(self) -> None:
+        from backend.main import PortfolioRequest, api_portfolio_analyze
+        from backend.schemas.agent import (
+            AgentEvidenceBundle,
+            AgentPlan,
+            AgentResult,
+            AgentTask,
+            AgentTaskType,
+        )
+        from backend.schemas.portfolio import HoldingMetrics, PortfolioAnalysisResponse
+
+        mocked = PortfolioAnalysisResponse(
+            total_cost_basis=50.0,
+            total_current_value=50.0,
+            total_unrealized_gain_loss=0.0,
+            total_return_pct=0.0,
+            estimated_annual_dividend=None,
+            estimated_monthly_dividend=None,
+            holdings=[HoldingMetrics(ticker="CASH", name="Cash")],
+            category_exposure={},
+            risk_flags=[],
+            summary="base response",
+            suggestions=[],
+            portfolio_intelligence=None,
+        )
+
+        mocked_result = AgentResult(
+            task=AgentTask(
+                task_type=AgentTaskType.PORTFOLIO_ANALYSIS,
+                portfolio=PortfolioRequest(holdings=[{"ticker": "CASH"}]),
+            ),
+            plan=AgentPlan(
+                task_type=AgentTaskType.PORTFOLIO_ANALYSIS,
+                summary="Portfolio analysis",
+                expected_outputs=["portfolio_analysis"],
+            ),
+            evidence=AgentEvidenceBundle(context={"portfolio_name": "current"}),
+            output=mocked,
+            output_type="PortfolioAnalysisResponse",
+        )
+
+        req = PortfolioRequest(holdings=[{"ticker": "CASH"}])
+        with patch("backend.main.execute_agent_task", return_value=mocked_result):
+            payload = api_portfolio_analyze(req)
+
+        self.assertEqual(payload["summary"], "base response")
+        self.assertIn("portfolio_intelligence", payload)
+        self.assertIsNone(payload["portfolio_intelligence"])
 
     def test_investor_profile_routes_persist_memory(self) -> None:
         import backend.main as main

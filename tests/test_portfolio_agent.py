@@ -65,6 +65,12 @@ class PortfolioAgentTest(unittest.TestCase):
     def test_fallback_agent_response_uses_investor_profile_memory(self) -> None:
         from backend.pipeline.portfolio_agent import _fallback_agent_response
         from backend.schemas.portfolio import HoldingMetrics, PortfolioAnalysisResponse
+        from backend.schemas.portfolio_intelligence import (
+            ConcentrationSnapshot,
+            IncomeQualitySnapshot,
+            PortfolioIntelligenceSnapshot,
+            ReviewItem,
+        )
 
         analysis = PortfolioAnalysisResponse(
             total_cost_basis=100.0,
@@ -82,6 +88,18 @@ class PortfolioAgentTest(unittest.TestCase):
             risk_flags=["Single-position concentration is high."],
             summary="Technology-heavy portfolio.",
             suggestions=["Review NVDA sizing."],
+            portfolio_intelligence=PortfolioIntelligenceSnapshot(
+                concentration=ConcentrationSnapshot(top_holding_weight_pct=55.0),
+                income_quality=IncomeQualitySnapshot(dividend_concentration_pct=62.0),
+                suggested_review_items=[
+                    ReviewItem(
+                        title="Review concentration in NVDA",
+                        reason="NVDA exceeds the concentration threshold.",
+                        evidence_keys=["concentration.top_holding_weight_pct"],
+                        severity="medium",
+                    )
+                ],
+            ),
         )
         evidence = {
             "targets": {"top_holdings": ["NVDA"]},
@@ -105,3 +123,15 @@ class PortfolioAgentTest(unittest.TestCase):
             any("lower risk tolerance" in item for item in response.suggested_next_actions)
         )
         self.assertTrue(any("Preferred sectors" in item for item in response.evidence_used))
+        self.assertTrue(
+            any("Portfolio intelligence reviewed" in item for item in response.evidence_used)
+        )
+        self.assertTrue(
+            any("Review concentration in NVDA" in item for item in response.suggested_next_actions)
+        )
+        self.assertFalse(
+            any(
+                "buy " in item.lower() or "sell " in item.lower()
+                for item in response.suggested_next_actions
+            )
+        )

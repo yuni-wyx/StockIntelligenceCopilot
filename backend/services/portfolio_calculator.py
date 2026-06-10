@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from typing import Any
 
@@ -10,6 +11,9 @@ try:
         PortfolioAnalysisResponse,
         PortfolioRequest,
     )
+    from ..services.portfolio_intelligence import (
+        build_portfolio_intelligence_snapshot,
+    )
     from ..symbols import detect_market
 except ImportError:
     from schemas.portfolio import (
@@ -18,6 +22,7 @@ except ImportError:
         PortfolioAnalysisResponse,
         PortfolioRequest,
     )
+    from services.portfolio_intelligence import build_portfolio_intelligence_snapshot
     from symbols import detect_market
 
 
@@ -54,6 +59,8 @@ LONG_DURATION_KEYWORDS = {
     "bond",
     "00687b",
 }
+
+logger = logging.getLogger(__name__)
 
 
 def round2(value: float | None) -> float | None:
@@ -486,6 +493,24 @@ def calculate_portfolio_metrics(
     scores = compute_health_scores(holdings)
     summary, suggestions = _build_summary(request, holdings, risk_flags)
     missing_data = sorted({issue for metric in holdings for issue in metric.missing_data})
+    asset_type_exposure = compute_exposure(holdings, "asset_type")
+    category_exposure = compute_exposure(holdings, "category")
+    sector_exposure = compute_exposure(holdings, "sector")
+    theme_exposure = compute_exposure(holdings, "theme")
+    market_exposure = compute_exposure(holdings, "market")
+    portfolio_intelligence = None
+    try:
+        portfolio_intelligence = build_portfolio_intelligence_snapshot(
+            holdings,
+            theme_exposure=theme_exposure,
+            sector_exposure=sector_exposure,
+            market_exposure=market_exposure,
+        )
+    except Exception:
+        logger.exception("Portfolio intelligence generation failed")
+        missing_data.append(
+            "Portfolio intelligence details were unavailable, so base analysis was returned."
+        )
 
     return PortfolioAnalysisResponse(
         total_cost_basis=round2(total_cost_basis),
@@ -495,15 +520,16 @@ def calculate_portfolio_metrics(
         estimated_annual_dividend=round2(annual_dividend),
         estimated_monthly_dividend=round2(monthly_dividend),
         holdings=holdings,
-        asset_type_exposure=compute_exposure(holdings, "asset_type"),
-        category_exposure=compute_exposure(holdings, "category"),
-        sector_exposure=compute_exposure(holdings, "sector"),
-        theme_exposure=compute_exposure(holdings, "theme"),
-        market_exposure=compute_exposure(holdings, "market"),
+        asset_type_exposure=asset_type_exposure,
+        category_exposure=category_exposure,
+        sector_exposure=sector_exposure,
+        theme_exposure=theme_exposure,
+        market_exposure=market_exposure,
         risk_attribution=compute_risk_attribution(holdings),
         risk_flags=risk_flags,
         summary=summary,
         suggestions=suggestions,
         missing_data=missing_data,
+        portfolio_intelligence=portfolio_intelligence,
         **scores,
     )

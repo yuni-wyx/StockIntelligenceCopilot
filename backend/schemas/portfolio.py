@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from .portfolio_intelligence import PortfolioIntelligenceSnapshot
+
 
 class HoldingInput(BaseModel):
     ticker: str
@@ -71,6 +73,7 @@ class PortfolioAnalysisResponse(BaseModel):
     suggestions: list[str]
     news_to_monitor: dict[str, list[str]] = Field(default_factory=dict)
     missing_data: list[str] = Field(default_factory=list)
+    portfolio_intelligence: PortfolioIntelligenceSnapshot | None = None
 
 
 class ReallocationAction(BaseModel):
