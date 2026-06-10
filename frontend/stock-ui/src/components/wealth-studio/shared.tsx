@@ -14,6 +14,12 @@ export const textareaClassName =
 export const secondaryLinkClassName =
   "rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-zinc-200 transition hover:border-white/20";
 
+export const primaryButtonClassName =
+  "w-full rounded-xl border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50 sm:w-auto";
+
+export const secondaryButtonClassName =
+  "w-full rounded-xl border border-white/10 bg-black/25 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-white/20 hover:bg-black/35 disabled:opacity-50 sm:w-auto";
+
 export function SectionIntro({
   title,
   helper,

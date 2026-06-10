@@ -4,6 +4,7 @@ import type { ScenarioComparisonResponse, ScenarioResponse } from "@/lib/portfol
 import type { WealthStudioCopy } from "@/i18n/messages";
 import { PortfolioStressTestSection } from "./PortfolioStressTestSection";
 import {
+  AdvancedJsonEditorSection,
   ScenarioComparisonSection,
   ScenarioSimulatorSection,
 } from "./PortfolioScenarioSections";
@@ -79,7 +80,43 @@ export function PortfolioScenarioPanel({
       </summary>
       <p className="mt-2 text-sm leading-6 text-zinc-400">{copy.advancedScenarioToolsHelper}</p>
 
-      <div className="mt-5 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
+          {copy.advancedScenarioTools}
+        </div>
+        <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-300">
+          <li>{copy.advancedScenarioIntroSimulator}</li>
+          <li>{copy.advancedScenarioIntroComparison}</li>
+          <li>{copy.advancedScenarioIntroStress}</li>
+        </ul>
+      </div>
+
+      <div className="mt-6 space-y-6">
+        <ScenarioSimulatorSection
+          copy={copy}
+          loading={loading}
+          normalizedHoldingsCount={normalizedHoldingsCount}
+          scenarioForm={scenarioForm}
+          onScenarioFormChange={onScenarioFormChange}
+          onRunScenario={onRunScenario}
+          scenario={scenario}
+        />
+
+        <ScenarioComparisonSection
+          copy={copy}
+          loading={loading}
+          comparisonScenarios={comparisonScenarios}
+          comparisonValidation={comparisonValidation}
+          onAddComparisonScenario={onAddComparisonScenario}
+          onRemoveComparisonScenario={onRemoveComparisonScenario}
+          onUpdateComparisonScenario={onUpdateComparisonScenario}
+          onRunScenarioComparison={onRunScenarioComparison}
+          comparison={comparison}
+          scenarioKindOptions={scenarioKindOptions}
+          scenarioKindLabel={scenarioKindLabel}
+          scenarioKindHelper={scenarioKindHelper}
+        />
+
         <PortfolioStressTestSection
           copy={copy}
           loading={loading}
@@ -90,33 +127,10 @@ export function PortfolioScenarioPanel({
           onRunStressTest={onRunStressTest}
         />
 
-        <ScenarioSimulatorSection
+        <AdvancedJsonEditorSection
           copy={copy}
-          loading={loading}
-          normalizedHoldingsCount={normalizedHoldingsCount}
-          scenarioForm={scenarioForm}
-          onScenarioFormChange={onScenarioFormChange}
-          onRunScenario={onRunScenario}
-          scenario={scenario}
-        />
-      </div>
-
-      <div className="mt-6">
-        <ScenarioComparisonSection
-          copy={copy}
-          loading={loading}
-          comparisonScenarios={comparisonScenarios}
-          comparisonValidation={comparisonValidation}
           compareJson={compareJson}
           onCompareJsonChange={onCompareJsonChange}
-          onAddComparisonScenario={onAddComparisonScenario}
-          onRemoveComparisonScenario={onRemoveComparisonScenario}
-          onUpdateComparisonScenario={onUpdateComparisonScenario}
-          onRunScenarioComparison={onRunScenarioComparison}
-          comparison={comparison}
-          scenarioKindOptions={scenarioKindOptions}
-          scenarioKindLabel={scenarioKindLabel}
-          scenarioKindHelper={scenarioKindHelper}
         />
       </div>
     </details>

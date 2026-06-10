@@ -250,6 +250,14 @@ export const messages = {
       advancedScenarioTools: "Advanced scenario tools",
       advancedScenarioToolsHelper:
         "Optional planning tools for scenario simulation, comparison, and power-user JSON editing.",
+      advancedScenarioIntroSimulator:
+        "Scenario Simulator: run one quick what-if test without changing your saved workspace.",
+      advancedScenarioIntroComparison:
+        "Scenario Comparison: compare multiple possible plans side by side.",
+      advancedScenarioIntroStress:
+        "Stress Test: run a hypothetical shock calculation to inspect portfolio sensitivity.",
+      quickScenarioSimulator: "Quick Scenario Simulator",
+      scenarioComparisonBuilder: "Scenario Comparison Builder",
       stressTest: "Portfolio Stress Test",
       stressTestHelper:
         "Run a simple what-if shock on your current holdings. These calculations are deterministic and meant for review, not prediction.",
@@ -352,6 +360,8 @@ export const messages = {
       advancedJsonEditor: "Advanced JSON editor",
       advancedJsonHelper:
         "Kept for compatibility and power users. It is used only when no structured scenarios are added above.",
+      advancedJsonQuietHelper:
+        "Power-user fallback only. Open this when you want to edit the raw scenario payload directly.",
       detailedExposureSection: "Detailed exposure, monitoring, and evidence",
       detailedExposureHelper:
         "Open this when you want full allocation detail, holding-level rows, linked headlines, and evidence traceability.",
@@ -605,6 +615,14 @@ export const messages = {
       advancedScenarioTools: "進階情境工具",
       advancedScenarioToolsHelper:
         "提供情境模擬、方案比較與進階 JSON 編輯，平常可先收起來。",
+      advancedScenarioIntroSimulator:
+        "情境模擬：快速試一個單次 what-if 情境，不會改動已儲存工作區。",
+      advancedScenarioIntroComparison:
+        "情境比較：把多個可能方案並排比較。",
+      advancedScenarioIntroStress:
+        "壓力測試：用假設衝擊試算投資組合的敏感度。",
+      quickScenarioSimulator: "快速情境模擬",
+      scenarioComparisonBuilder: "情境比較建立器",
       stressTest: "投資組合壓力測試",
       stressTestHelper:
         "用簡單的假設衝擊測試目前持股。這些都是確定性試算，用來幫助檢查風險，不是預測。",
@@ -700,6 +718,8 @@ export const messages = {
       advancedJsonEditor: "進階 JSON 編輯器",
       advancedJsonHelper:
         "保留給進階使用與相容性。只有在上方沒有結構化情境時才會使用。",
+      advancedJsonQuietHelper:
+        "僅供進階使用者與相容性需求使用；需要直接調整原始情境 payload 時再展開即可。",
       detailedExposureSection: "詳細曝險、追蹤資訊與證據",
       detailedExposureHelper:
         "需要完整配置明細、持股層級資料、相關新聞與證據來源時再展開查看。",

@@ -8,6 +8,8 @@ import {
   MetricCard,
   formatNumber,
   inputClassName,
+  primaryButtonClassName,
+  secondaryButtonClassName,
   textareaClassName,
 } from "./shared";
 import type {
@@ -31,22 +33,42 @@ export function ScenarioSimulatorSection({
   scenarioForm: ScenarioForm;
   onScenarioFormChange: (updater: (prev: ScenarioForm) => ScenarioForm) => void;
   onRunScenario: () => void;
-  scenario: ScenarioResponse | null;
+    scenario: ScenarioResponse | null;
 }) {
   return (
     <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-5 shadow-2xl shadow-black/20">
-      <h2 className="text-xl font-semibold">{copy.scenarioSimulator}</h2>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-amber-200/60">
+            {copy.advancedScenarioTools}
+          </div>
+          <h2 className="mt-1 text-xl font-semibold">{copy.quickScenarioSimulator}</h2>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+          {copy.scenarioSimulator}
+        </span>
+      </div>
       <p className="mt-1 text-sm leading-6 text-zinc-400">{copy.scenarioSimulatorHelper}</p>
       <div className="mt-4 space-y-4">
-        <Field label={copy.sellTicker}>
-          <input
-            value={scenarioForm.sellTicker}
-            onChange={(e) => onScenarioFormChange((prev) => ({ ...prev, sellTicker: e.target.value }))}
-            placeholder="00878"
-            className={inputClassName}
-          />
-        </Field>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Field label={copy.sellTicker}>
+            <input
+              value={scenarioForm.sellTicker}
+              onChange={(e) => onScenarioFormChange((prev) => ({ ...prev, sellTicker: e.target.value }))}
+              placeholder="00878"
+              className={inputClassName}
+            />
+          </Field>
+          <Field label={copy.buyTicker}>
+            <input
+              value={scenarioForm.buyTicker}
+              onChange={(e) => onScenarioFormChange((prev) => ({ ...prev, buyTicker: e.target.value }))}
+              placeholder="2330"
+              className={inputClassName}
+            />
+          </Field>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label={copy.sellShares}>
             <input
               value={scenarioForm.sellShares}
@@ -70,32 +92,24 @@ export function ScenarioSimulatorSection({
               className={inputClassName}
             />
           </Field>
+          <Field label={copy.buyAmount}>
+            <input
+              value={scenarioForm.buyAmount}
+              onChange={(e) => onScenarioFormChange((prev) => ({ ...prev, buyAmount: e.target.value }))}
+              inputMode="decimal"
+              placeholder="35000"
+              className={inputClassName}
+            />
+          </Field>
+          <Field label={copy.buyName} className="sm:col-span-2 lg:col-span-2">
+            <input
+              value={scenarioForm.buyName}
+              onChange={(e) => onScenarioFormChange((prev) => ({ ...prev, buyName: e.target.value }))}
+              placeholder="Optional fund or company name"
+              className={inputClassName}
+            />
+          </Field>
         </div>
-        <Field label={copy.buyTicker}>
-          <input
-            value={scenarioForm.buyTicker}
-            onChange={(e) => onScenarioFormChange((prev) => ({ ...prev, buyTicker: e.target.value }))}
-            placeholder="2330"
-            className={inputClassName}
-          />
-        </Field>
-        <Field label={copy.buyAmount}>
-          <input
-            value={scenarioForm.buyAmount}
-            onChange={(e) => onScenarioFormChange((prev) => ({ ...prev, buyAmount: e.target.value }))}
-            inputMode="decimal"
-            placeholder="35000"
-            className={inputClassName}
-          />
-        </Field>
-        <Field label={copy.buyName}>
-          <input
-            value={scenarioForm.buyName}
-            onChange={(e) => onScenarioFormChange((prev) => ({ ...prev, buyName: e.target.value }))}
-            placeholder="Optional fund or company name"
-            className={inputClassName}
-          />
-        </Field>
         <Field label={copy.scenarioQuestion}>
           <textarea
             value={scenarioForm.question}
@@ -105,13 +119,16 @@ export function ScenarioSimulatorSection({
             className={textareaClassName}
           />
         </Field>
-        <button
-          onClick={onRunScenario}
-          disabled={loading || normalizedHoldingsCount === 0}
-          className="w-full rounded-xl border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50"
-        >
-          {copy.runScenario}
-        </button>
+        <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-zinc-500">{copy.scenarioSimulatorHelper}</p>
+          <button
+            onClick={onRunScenario}
+            disabled={loading || normalizedHoldingsCount === 0}
+            className={primaryButtonClassName}
+          >
+            {copy.runScenario}
+          </button>
+        </div>
       </div>
 
       <ScenarioResultSection copy={copy} scenario={scenario} />
@@ -166,8 +183,6 @@ export function ScenarioComparisonSection({
   loading,
   comparisonScenarios,
   comparisonValidation,
-  compareJson,
-  onCompareJsonChange,
   onAddComparisonScenario,
   onRemoveComparisonScenario,
   onUpdateComparisonScenario,
@@ -181,8 +196,6 @@ export function ScenarioComparisonSection({
   loading: boolean;
   comparisonScenarios: ComparisonScenarioDraft[];
   comparisonValidation: string[];
-  compareJson: string;
-  onCompareJsonChange: (value: string) => void;
   onAddComparisonScenario: () => void;
   onRemoveComparisonScenario: (id: string) => void;
   onUpdateComparisonScenario: (
@@ -198,10 +211,20 @@ export function ScenarioComparisonSection({
 }) {
   return (
     <section className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
-      <h2 className="text-xl font-semibold">{copy.scenarioComparison}</h2>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-amber-200/60">
+            {copy.advancedScenarioTools}
+          </div>
+          <h2 className="mt-1 text-xl font-semibold">{copy.scenarioComparisonBuilder}</h2>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+          {copy.scenarioComparison}
+        </span>
+      </div>
       <p className="mt-1 text-sm leading-6 text-zinc-400">{copy.scenarioComparisonHelper}</p>
 
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-zinc-400">
           {comparisonScenarios.length > 0
             ? `${comparisonScenarios.length} ${
@@ -213,7 +236,7 @@ export function ScenarioComparisonSection({
         </div>
         <button
           onClick={onAddComparisonScenario}
-          className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-amber-100"
+          className={secondaryButtonClassName}
         >
           {copy.addScenario}
         </button>
@@ -250,24 +273,52 @@ export function ScenarioComparisonSection({
         </div>
       ) : null}
 
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <button
-          onClick={onRunScenarioComparison}
-          disabled={loading}
-          className="rounded-xl border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50"
-        >
-          {copy.runScenarioComparison}
-        </button>
+      <div className="mt-5 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-sm text-zinc-500">
           {comparisonScenarios.length === 0 ? copy.advancedJsonHint : copy.structuredPayloadHint}
         </span>
+        <button
+          onClick={onRunScenarioComparison}
+          disabled={loading}
+          className={primaryButtonClassName}
+        >
+          {copy.runScenarioComparison}
+        </button>
       </div>
 
-      <details className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+      {comparison ? <ScenarioComparisonResultsTable comparison={comparison} copy={copy} /> : null}
+    </section>
+  );
+}
+
+export function AdvancedJsonEditorSection({
+  copy,
+  compareJson,
+  onCompareJsonChange,
+}: {
+  copy: WealthStudioCopy;
+  compareJson: string;
+  onCompareJsonChange: (value: string) => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-zinc-900/50 p-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
+            {copy.advancedScenarioTools}
+          </div>
+          <h2 className="mt-1 text-xl font-semibold">{copy.advancedJsonEditor}</h2>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-400">
+          {copy.advancedJsonHint}
+        </span>
+      </div>
+
+      <details className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
         <summary className="cursor-pointer text-sm font-semibold text-zinc-200">
           {copy.advancedJsonEditor}
         </summary>
-        <p className="mt-2 text-sm leading-6 text-zinc-500">{copy.advancedJsonHelper}</p>
+        <p className="mt-2 text-sm leading-6 text-zinc-500">{copy.advancedJsonQuietHelper}</p>
         <textarea
           value={compareJson}
           onChange={(e) => onCompareJsonChange(e.target.value)}
@@ -275,8 +326,6 @@ export function ScenarioComparisonSection({
           className="mt-4 min-h-64 w-full resize-y rounded-xl border border-white/10 bg-black/50 px-4 py-3 font-mono text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-amber-200/50"
         />
       </details>
-
-      {comparison ? <ScenarioComparisonResultsTable comparison={comparison} copy={copy} /> : null}
     </section>
   );
 }
@@ -329,7 +378,7 @@ function StructuredScenarioCard({
         </button>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1.2fr]">
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
         <Field label={copy.scenarioName}>
           <input
             value={scenarioItem.name}
@@ -353,7 +402,7 @@ function StructuredScenarioCard({
         </Field>
       </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
+      <div className="mt-3 grid gap-3 lg:grid-cols-3">
         <Field label={copy.ticker}>
           <input
             value={scenarioItem.ticker}
