@@ -25,6 +25,7 @@ class RouteMapTest(unittest.TestCase):
             ("POST", "/api/portfolio/scenario"),
             ("POST", "/api/portfolio/scenarios/compare"),
             ("POST", "/api/portfolio/agent"),
+            ("POST", "/api/portfolio/chat"),
             ("POST", "/api/portfolio/save"),
             ("GET", "/api/portfolio/current"),
             ("PUT", "/api/portfolio/current"),
@@ -39,3 +40,25 @@ class RouteMapTest(unittest.TestCase):
         }
 
         self.assertTrue(expected.issubset(routes))
+
+    def test_portfolio_chat_route_is_registered_and_not_404(self):
+        from fastapi.testclient import TestClient
+
+        response = TestClient(app).post(
+            "/api/portfolio/chat",
+            json={
+                "question": "hello",
+                "portfolio": {
+                    "holdings": [
+                        {
+                            "ticker": "00878",
+                            "current_price": 10,
+                            "shares": 1,
+                        }
+                    ]
+                },
+            },
+        )
+
+        self.assertNotEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 200)
