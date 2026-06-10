@@ -132,6 +132,48 @@ export type PortfolioAgentResponse = {
   missing_data: string[];
 };
 
+export type PortfolioChatContextHolding = {
+  ticker: string;
+  name?: string | null;
+  shares?: number | null;
+  avg_cost?: number | null;
+  current_price?: number | null;
+  current_value?: number | null;
+  cost_basis?: number | null;
+  unrealized_gain_loss?: number | null;
+  return_pct?: number | null;
+  weight_pct?: number | null;
+};
+
+export type PortfolioChatReviewItem = {
+  title: string;
+  reason: string;
+  evidence_keys?: string[];
+  severity?: "low" | "medium" | "high";
+};
+
+export type PortfolioChatContext = {
+  total_current_value?: number | null;
+  total_cost_basis?: number | null;
+  total_unrealized_gain_loss?: number | null;
+  total_return_pct?: number | null;
+  top_holdings: PortfolioChatContextHolding[];
+  risk_flags: string[];
+  suggested_review_items: PortfolioChatReviewItem[];
+  concentration_summary: string;
+  income_summary: string;
+  holdings: PortfolioChatContextHolding[];
+  data_caveats: string[];
+};
+
+export type PortfolioChatResponse = {
+  answer: string;
+  portfolio_context: PortfolioChatContext;
+  evidence_used: string[];
+  suggested_followups: string[];
+  safety_disclaimer: string;
+};
+
 export type InvestorProfile = {
   risk_tolerance?: string | null;
   investment_style?: string | null;
@@ -246,6 +288,40 @@ export async function askPortfolioAgent(payload: {
   });
   if (!res.ok) {
     throw new Error("Failed to get portfolio agent response.");
+  }
+  return res.json();
+}
+
+export async function askAboutPortfolio(payload: {
+  question: string;
+  workspace_id?: string;
+  portfolio?: {
+    holdings: HoldingInput[];
+    risk_profile?: string;
+    goal?: string;
+    base_currency?: string;
+  };
+  language?: "en" | "zh";
+}): Promise<PortfolioChatResponse> {
+  const res = await fetch(buildApiUrl("/portfolio/chat"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const fallback = "Failed to get portfolio context response.";
+    try {
+      const data = (await res.json()) as { error?: string };
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      throw new Error(fallback);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(fallback);
+    }
   }
   return res.json();
 }

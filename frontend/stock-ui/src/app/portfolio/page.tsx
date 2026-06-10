@@ -42,15 +42,15 @@ import { WealthStudioHeader } from "@/components/wealth-studio/WealthStudioHeade
 import { useLanguage } from "@/context/LanguageContext";
 import {
   analyzePortfolio,
-  askPortfolioAgent,
+  askAboutPortfolio,
   comparePortfolioScenarios,
   listSavedPortfolios,
   loadCurrentPortfolio,
   runPortfolioScenario,
   savePortfolio,
   type HoldingInput,
-  type PortfolioAgentResponse,
   type PortfolioAnalysisResponse,
+  type PortfolioChatResponse,
   type ScenarioComparisonResponse,
   type ScenarioResponse,
 } from "@/lib/portfolioApi";
@@ -58,7 +58,7 @@ import { appendHolding } from "@/lib/portfolioState";
 import { normalizeTicker } from "@/lib/tickerMap";
 
 export default function PortfolioPage() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const ws = t.wealthStudio;
   const [holdings, setHoldings] = useState<EditableHolding[]>(() => [
     toEditableHolding(
@@ -84,8 +84,10 @@ export default function PortfolioPage() {
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<PortfolioAnalysisResponse | null>(null);
   const [scenario, setScenario] = useState<ScenarioResponse | null>(null);
-  const [agentResponse, setAgentResponse] = useState<PortfolioAgentResponse | null>(null);
+  const [portfolioChatResponse, setPortfolioChatResponse] =
+    useState<PortfolioChatResponse | null>(null);
   const [savedPortfolios, setSavedPortfolios] = useState<Array<Record<string, unknown>>>([]);
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
   const [compareJson, setCompareJson] = useState(DEFAULT_COMPARE_JSON);
   const [comparison, setComparison] = useState<ScenarioComparisonResponse | null>(null);
   const [comparisonScenarios, setComparisonScenarios] = useState<ComparisonScenarioDraft[]>([]);
@@ -107,10 +109,19 @@ export default function PortfolioPage() {
     question: "Should I reduce one position and redeploy into a new fund?",
   });
   const [agentQuestion, setAgentQuestion] = useState(
-    "Should I sell part of 00878 and buy Allianz Taiwan Technology Fund?",
+    "Which holdings should I review first if my portfolio feels too concentrated?",
   );
 
   const normalizedHoldings = useMemo(() => normalizeHoldings(holdings), [holdings]);
+  const portfolioQuestionChips = useMemo(
+    () => [
+      { id: "concentration", label: ws.portfolioChatStarterConcentration },
+      { id: "review", label: ws.portfolioChatStarterReview },
+      { id: "income", label: ws.portfolioChatStarterIncome },
+      { id: "tech", label: ws.portfolioChatStarterTech },
+    ],
+    [ws],
+  );
 
   const holdingsValidation = useMemo(
     () =>
@@ -202,7 +213,7 @@ export default function PortfolioPage() {
     setError(null);
     setInsightsError(null);
     setScenario(null);
-    setAgentResponse(null);
+    setPortfolioChatResponse(null);
     try {
       const result = await analyzePortfolio(currentPortfolioPayload());
       setAnalysis(result);
@@ -226,6 +237,7 @@ export default function PortfolioPage() {
         name: "current",
         make_current: true,
       });
+      setCurrentWorkspaceId("current");
       const listed = await listSavedPortfolios();
       setSavedPortfolios(listed.portfolios);
     } catch (err) {
@@ -249,6 +261,7 @@ export default function PortfolioPage() {
       setHoldings((record.portfolio.holdings ?? []).map((holding: HoldingInput) => toEditableHolding(holding)));
       setRiskProfile(record.portfolio.risk_profile ?? "Balanced");
       setGoal(record.portfolio.goal ?? "");
+      setCurrentWorkspaceId("current");
       const listed = await listSavedPortfolios();
       setSavedPortfolios(listed.portfolios);
     } catch (err) {
@@ -318,16 +331,30 @@ export default function PortfolioPage() {
     }
   }
 
-  async function handleAskAgent() {
+  async function handleAskAgent(questionOverride?: string) {
+    const nextQuestion = questionOverride ?? agentQuestion;
+    const hasDirectPortfolio = normalizedHoldings.length > 0;
+    const workspaceId = hasDirectPortfolio ? undefined : currentWorkspaceId;
+
+    if (!hasDirectPortfolio && !workspaceId) {
+      setError(ws.portfolioChatAddHoldingsFirst);
+      return;
+    }
+
     setLoading(true);
     setActiveOperation("coach");
     setError(null);
+    if (questionOverride) {
+      setAgentQuestion(questionOverride);
+    }
     try {
-      const response = await askPortfolioAgent({
-        portfolio: currentPortfolioPayload(),
-        user_question: agentQuestion,
+      const response = await askAboutPortfolio({
+        question: nextQuestion,
+        portfolio: hasDirectPortfolio ? currentPortfolioPayload() : undefined,
+        workspace_id: workspaceId || undefined,
+        language: locale === "zh" ? "zh" : "en",
       });
-      setAgentResponse(response);
+      setPortfolioChatResponse(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : ws.failedCoach);
     } finally {
@@ -406,8 +433,10 @@ export default function PortfolioPage() {
             loading={loading}
             question={agentQuestion}
             onQuestionChange={setAgentQuestion}
-            onAsk={handleAskAgent}
-            response={agentResponse}
+            onAsk={() => void handleAskAgent()}
+            onAskQuestion={(value) => void handleAskAgent(value)}
+            response={portfolioChatResponse}
+            starterQuestions={portfolioQuestionChips}
           />
           <div className="space-y-6">
             <SavedWorkspacesPanel copy={ws} savedPortfolios={savedPortfolios} />

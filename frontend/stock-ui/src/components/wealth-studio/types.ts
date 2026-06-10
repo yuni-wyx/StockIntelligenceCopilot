@@ -173,3 +173,8 @@ export type HoldingsValidationState = {
   fieldKeys: Set<string>;
   hasErrors: boolean;
 };
+
+export type PortfolioChatQuestionChip = {
+  id: string;
+  label: string;
+};

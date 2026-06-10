@@ -25,19 +25,21 @@ test("portfolio page coordinates wealth studio sections and extracted components
   assert.match(holdingsEditor, /loadSaved/);
   assert.match(snapshotPanel, /SnapshotOverview/);
   assert.match(snapshotSections, /overallHealth/);
-  assert.match(coachPanel, /aiPortfolioCoach/);
+  assert.match(coachPanel, /askAboutMyPortfolio/);
   assert.match(stressTestPanel, /runStressTest/);
   assert.match(source, /addHolding/);
   assert.match(messages, /Portfolio Snapshot/);
   assert.match(messages, /Portfolio Stress Test/);
-  assert.match(messages, /AI Portfolio Coach/);
+  assert.match(messages, /Ask About My Portfolio/);
 });
 
 test("api base source builds urls under /api and requires deployed env config", () => {
   const source = read("src/lib/apiBase.ts");
+  const portfolioApi = read("src/lib/portfolioApi.ts");
   assert.match(source, /NEXT_PUBLIC_BACKEND_BASE_URL/);
   assert.match(source, /http:\/\/localhost:8000/);
   assert.match(source, /\/api\$\{path\}/);
+  assert.match(portfolioApi, /\/portfolio\/chat/);
 });
 
 test("research mode still exists in copilot source", () => {

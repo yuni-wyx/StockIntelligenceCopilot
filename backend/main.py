@@ -1,11 +1,13 @@
 # ruff: noqa: E402
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Any, List
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from rich import box
 from rich.console import Console
@@ -24,6 +26,7 @@ if __package__:
     from .config import BACKEND_CORS_ORIGINS
     from .pipeline.agent_runtime import execute_agent_task, stream_agent_task
     from .pipeline.orchestrator import execute_pipeline, stream_pipeline_events
+    from .pipeline.portfolio_chat_orchestrator import PortfolioChatOrchestrator
     from .pipeline.route_adapters import (
         explain_request_to_agent_task,
         portfolio_agent_request_to_agent_task,
@@ -48,6 +51,7 @@ if __package__:
         ScenarioComparisonRequest,
         ScenarioRequest,
     )
+    from .schemas.portfolio_chat import PortfolioChatRequest
     from .services.portfolio_store import PortfolioStore
     from .symbols import normalize_symbol
 else:
@@ -61,6 +65,7 @@ else:
     from config import BACKEND_CORS_ORIGINS
     from pipeline.agent_runtime import execute_agent_task, stream_agent_task
     from pipeline.orchestrator import execute_pipeline, stream_pipeline_events
+    from pipeline.portfolio_chat_orchestrator import PortfolioChatOrchestrator
     from pipeline.route_adapters import (
         explain_request_to_agent_task,
         portfolio_agent_request_to_agent_task,
@@ -85,11 +90,13 @@ else:
         ScenarioComparisonRequest,
         ScenarioRequest,
     )
+    from schemas.portfolio_chat import PortfolioChatRequest
     from services.portfolio_store import PortfolioStore
     from symbols import normalize_symbol
 
 console = Console(width=110)
 portfolio_store = PortfolioStore()
+logger = logging.getLogger(__name__)
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
@@ -235,6 +242,22 @@ def api_portfolio_scenarios_compare(req: ScenarioComparisonRequest) -> dict:
 def api_portfolio_agent(req: PortfolioAgentRequest) -> dict:
     task = portfolio_agent_request_to_agent_task(req)
     return _execute_runtime_route(task, allow_legacy_fallback=False)
+
+
+@app.post("/api/portfolio/chat")
+def api_portfolio_chat(req: PortfolioChatRequest):
+    orchestrator = PortfolioChatOrchestrator(store=portfolio_store)
+    try:
+        response = orchestrator.orchestrate(req)
+        return serialize_output(response)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+    except Exception:
+        logger.exception("Portfolio-aware chat failed")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Portfolio-aware chat failed."},
+        )
 
 
 @app.post("/api/portfolio/save")

@@ -247,6 +247,29 @@ export const messages = {
       coachHelper: "Ask a plain-language question about the portfolio you entered.",
       question: "Question",
       askCoach: "Ask Portfolio Coach",
+      askAboutMyPortfolio: "Ask About My Portfolio",
+      portfolioChatHelper:
+        "I already know your current or saved holdings. Ask about allocation, concentration, risk, income, or scenario review.",
+      portfolioChatContextNote: "Uses current or saved workspace context",
+      askAboutPortfolioCta: "Ask About My Portfolio",
+      portfolioChatPlaceholder:
+        "Which holdings should I review first if my portfolio feels too concentrated?",
+      portfolioChatEvidenceUsed: "Context and evidence used",
+      portfolioChatSuggestedFollowups: "Suggested follow-up questions",
+      portfolioChatNoFollowups: "No follow-up questions available yet.",
+      portfolioChatSafety: "Safety note",
+      portfolioChatConcentrationHelper:
+        "Use this as a review-oriented concentration summary, not a trading instruction.",
+      portfolioChatIncomeHelper:
+        "Income views are estimates based on available data and should be monitored over time.",
+      reviewContext: "Review context",
+      estimateLabel: "Estimate",
+      portfolioChatAddHoldingsFirst:
+        "Add or load holdings first so I can answer with your portfolio context.",
+      portfolioChatStarterConcentration: "Is my portfolio too concentrated?",
+      portfolioChatStarterReview: "Which holdings should I review first?",
+      portfolioChatStarterIncome: "How stable is my dividend income?",
+      portfolioChatStarterTech: "What should I monitor if tech stocks fall?",
       advancedScenarioTools: "Advanced scenario tools",
       advancedScenarioToolsHelper:
         "Optional planning tools for scenario simulation, comparison, and power-user JSON editing.",
@@ -612,6 +635,29 @@ export const messages = {
       coachHelper: "用白話詢問你剛輸入的投資組合。",
       question: "問題",
       askCoach: "詢問投資教練",
+      askAboutMyPortfolio: "詢問我的投資組合",
+      portfolioChatHelper:
+        "我已經會使用你目前或已儲存的持股脈絡。你可以直接問配置、集中度、風險、收益或情境檢查。",
+      portfolioChatContextNote: "會使用目前或已儲存工作區脈絡",
+      askAboutPortfolioCta: "詢問我的投資組合",
+      portfolioChatPlaceholder:
+        "如果我的投資組合看起來太集中，我應該先檢查哪些持股？",
+      portfolioChatEvidenceUsed: "使用的脈絡與證據",
+      portfolioChatSuggestedFollowups: "建議後續問題",
+      portfolioChatNoFollowups: "目前沒有後續問題建議。",
+      portfolioChatSafety: "安全提醒",
+      portfolioChatConcentrationHelper:
+        "這是用來協助檢視的集中度摘要，不是交易指令。",
+      portfolioChatIncomeHelper:
+        "收益觀點是根據可用資料整理的估算，適合持續追蹤。",
+      reviewContext: "檢視脈絡",
+      estimateLabel: "估算",
+      portfolioChatAddHoldingsFirst:
+        "請先新增或載入持股，我才能用你的投資組合脈絡回答。",
+      portfolioChatStarterConcentration: "我的投資組合是不是太集中？",
+      portfolioChatStarterReview: "我應該先檢查哪些持股？",
+      portfolioChatStarterIncome: "我的配息收入穩定嗎？",
+      portfolioChatStarterTech: "如果科技股下跌，我該注意什麼？",
       advancedScenarioTools: "進階情境工具",
       advancedScenarioToolsHelper:
         "提供情境模擬、方案比較與進階 JSON 編輯，平常可先收起來。",
