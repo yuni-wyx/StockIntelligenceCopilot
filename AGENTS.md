@@ -127,6 +127,24 @@ Ask Yuni before introducing or enabling any of the following:
 
 Existing optional provider integrations must remain clearly documented and guarded by environment variables.
 
+## Portfolio-Aware Chat Rules
+
+- Treat the saved or current Wealth Studio workspace as the default portfolio memory source.
+- Prefer a deterministic portfolio context builder before introducing any long-term memory, vector memory, or embedding workflow.
+- Do not introduce database memory, vector databases, brokerage scraping, or brokerage login flows unless Yuni explicitly approves them.
+- Do not store secrets, brokerage credentials, or account tokens in the repo, local fixtures, or demo persistence layer.
+- Any brokerage, custodian, or third-party portfolio API integration requires explicit approval first.
+- If API keys, model training, external LLM calls, embeddings, or new cloud resources are needed, stop and ask Yuni before proceeding.
+- Portfolio-aware answers must be evidence-based, privacy-conscious, and clearly non-advisory.
+- Avoid direct `buy` / `sell` wording in portfolio-aware chat. Prefer:
+  - review
+  - consider
+  - monitor
+  - rebalance scenario
+  - risk threshold
+- Always preserve user privacy and avoid logging sensitive holdings or portfolio questions unnecessarily.
+- When portfolio memory is incomplete or stale, say so clearly and explain what context is missing.
+
 ## Commands
 
 - Backend run: `./.venv/bin/python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000`

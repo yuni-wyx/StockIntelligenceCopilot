@@ -1,6 +1,6 @@
 # Stock Intelligence Copilot
 
-**Stock Intelligence Copilot** is a full-stack AI investment research and portfolio intelligence platform. It combines a FastAPI backend, a Next.js frontend, a unified agent runtime, deterministic portfolio calculations, evidence aggregation, streaming copilot responses, and a Wealth Studio workspace for personal portfolio review.
+**Stock Intelligence Copilot** is a full-stack portfolio-aware AI investment copilot. It combines a FastAPI backend, a Next.js frontend, a unified agent runtime, deterministic portfolio calculations, evidence aggregation, streaming copilot responses, and a Wealth Studio workspace for personal portfolio review.
 
 The project is built for research, education, and demo use. It is not financial advice, does not predict guaranteed returns, and should describe portfolio signals as heuristic estimates or suggested review items.
 
@@ -15,6 +15,20 @@ The app has evolved from a stock lookup tool into a broader investment copilot:
 - SSE streaming includes cancellation cleanup so Stop, refresh, navigation, and aborted requests do not silently leave orphaned streams.
 - Runtime and fallback errors are expected to return non-2xx HTTP statuses instead of successful `200` responses with error payloads.
 
+## Project Positioning
+
+The product direction is moving from a stock research dashboard toward a **portfolio-aware AI investment copilot**.
+
+Today it already combines:
+
+- ticker research across US and Taiwan markets
+- Wealth Studio for holdings analysis
+- deterministic stress tests and scenario review
+- benchmark-relative signal summaries
+- portfolio intelligence snapshots and review items
+
+The next milestone is to make the saved Wealth Studio workspace behave like lightweight portfolio memory, so users can ask natural questions without re-entering holdings every time.
+
 ## Feature Highlights
 
 - **Copilot Research**: ticker-level research for US and Taiwan stocks, ETFs, and funds.
@@ -27,6 +41,30 @@ The app has evolved from a stock lookup tool into a broader investment copilot:
 - **Stress Testing**: evaluate portfolio sensitivity under hypothetical downside or thematic pressure.
 - **Signal Engine**: relative signal layer for market, portfolio, and watchlist review.
 - **Evidence / Provenance**: source-aware architecture for news, filings, fundamentals, and analyst-style signals.
+
+## Current Progress
+
+- **Wealth Studio**: holdings editor, analysis, save/load workspace flows, and AI portfolio coaching UX
+- **Portfolio Stress Test**: deterministic what-if shock analysis for portfolio review
+- **Signal Engine**: transparent benchmark-relative signal scoring with caveats
+- **Portfolio Intelligence**: concentration, income quality, downside attribution, and review-item summaries
+
+## Planned Milestone: Week 4.5 Portfolio Memory + Portfolio-Aware Chat
+
+Why this matters:
+
+- it removes repeated manual portfolio context entry
+- it turns the saved or current workspace into lightweight analysis memory
+- it lets the copilot combine holdings, weights, portfolio intelligence, stress-test context, signal evidence, and market research in one answer
+
+Planned user flow:
+
+1. Save or load a Wealth Studio workspace once.
+2. Ask a natural question such as `我的風險是不是太集中？` or `兆利跟中華目前可以怎麼配置？`
+3. Inject saved holdings, deterministic portfolio metrics, portfolio intelligence, stress-test summaries, and relevant evidence into the response workflow.
+4. Return a cautious, evidence-based answer that supports review and monitoring rather than direct commands.
+
+See [Week 4.5 Portfolio-Aware Chat Spec](docs/portfolio-aware-chat-spec.md) for the implementation plan.
 
 ## Architecture Summary
 
@@ -153,6 +191,13 @@ Common variables:
 
 Trade synthesis should remain deterministic by default for stable demos. Optional LLM-backed paths must stay feature-flagged and clearly described as optional.
 
+## API / Model Policy
+
+- Do not add paid APIs, model training, embeddings, vector databases, broker APIs, or external LLM services without explicit approval.
+- Do not add new API keys or secret-bearing workflows casually for demo features.
+- Portfolio memory should start from the saved local workspace, not cloud memory infrastructure.
+- If a future milestone truly requires external model calls or new providers, stop and confirm with Yuni first.
+
 ## Local Setup
 
 Prerequisites:
@@ -198,6 +243,12 @@ The safer setup is:
 - `reactCompiler: false`
 - frontend dev script uses `next dev --webpack`
 - curl-first checks before opening a browser
+
+Safe reminders:
+
+- do not open localhost automatically
+- prefer curl-first verification
+- do not use Playwright or browser automation unless explicitly requested
 
 Start servers only when needed:
 
@@ -360,6 +411,13 @@ Preferred language:
 - data quality caveat
 - not financial advice
 
+For portfolio-aware chat and portfolio intelligence features:
+
+- describe outputs as heuristic estimates or review-oriented analysis
+- do not present ranges as guaranteed targets
+- frame any price-level discussion as watch levels, review zones, valuation context, or risk thresholds
+- do not issue direct buy/sell commands
+
 Any number shown in the UI or generated output should come from user input, deterministic calculation, fetched tool output, or explicit source metadata. If data is missing, say it is missing.
 
 ## Portfolio Insight Limitations
@@ -451,5 +509,11 @@ Near-term roadmap:
   - improve concentration analysis
   - improve sector exposure
   - add risk attribution and watchlist monitoring hooks
+
+- **Week 4.5: Portfolio Memory + Portfolio-Aware Chat**
+  - use the saved/current Wealth Studio workspace as lightweight portfolio memory
+  - inject holdings, weights, portfolio intelligence, stress tests, and signal evidence into portfolio-aware answers
+  - add natural question entry points for personalized portfolio review
+  - keep answers evidence-based, privacy-conscious, and non-advisory
 
 Future ML, embeddings, vector databases, model training, paid APIs, or new cloud resources should only be added after explicit approval.

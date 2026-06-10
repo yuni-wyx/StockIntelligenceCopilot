@@ -26,11 +26,31 @@ Default posture:
   - enabling paid APIs
   - introducing model training
   - adding API keys or secrets
+  - adding external LLM service calls
+  - adding embeddings or vector memory
+  - adding broker APIs or brokerage scraping
   - using cloud resources
   - reworking architecture
   - opening localhost or using browser automation
 
 Yuni values work that is practical, demo-ready, and explainable. A small clean improvement is better than a large speculative rewrite.
+
+## Product Workflow Priorities
+
+Yuni's goal is a practical personal investment copilot, not just a dashboard. When product scope is ambiguous, prioritize:
+
+1. remembering portfolio context
+2. natural conversation
+3. evidence-backed analysis
+4. demo and resume value
+5. safe wording
+
+Avoid overbuilding advanced analytics before the core user flow is easy:
+
+- save holdings once
+- load current workspace quickly
+- ask a natural question
+- answer using portfolio context plus evidence
 
 ## Safe Local Debugging
 
@@ -55,6 +75,8 @@ For implementation tasks, final reports should include:
 
 - files changed
 - what behavior or docs changed
+- what user scenario is now supported
+- what remains manual
 - tests or checks run
 - risks and follow-up items
 
@@ -107,6 +129,8 @@ Use structured output when appropriate:
 - When comparing scenarios, explain what improves, what worsens, and what remains uncertain.
 - Portfolio agent outputs should separate conclusion, evidence, suggested actions, and risks.
 - Deterministic metrics must be visually and verbally distinct from heuristic estimates.
+- For portfolio-aware chat, prefer saved workspace context over asking the user to re-enter holdings when current workspace data is already available.
+- Do not frame suggestions as instructions. Use review-oriented wording tied to explicit evidence.
 
 ## Numerical Discipline
 
