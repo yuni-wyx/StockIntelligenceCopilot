@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test:smoke": "node --test src/lib/smoke.test.mjs"
+    "test:smoke": "node --test src/lib/smoke.test.mjs",
+    "test:helpers": "node --test src/lib/stress-test.test.mjs"
   },
   "dependencies": {
     "next": "16.2.1",

@@ -23,15 +23,15 @@ UNSAFE_CERTAINTY_TERMS = (
 )
 
 FIELD_SOURCE_HINTS = {
-    "fundamental_summary": ("fundamentals", "analyst_signal"),
+    "fundamental_summary": ("fundamentals", "analyst_signal", "signal"),
     "bull_case": ("fundamentals", "analyst_signal", "news"),
     "bear_case": ("fundamentals", "news", "analyst_signal"),
     "recent_news_summary": ("news",),
     "overall_sentiment": ("news", "fundamentals"),
-    "what_to_watch_next": ("news", "earnings", "fundamentals"),
-    "price_move_summary": ("market_data", "news", "earnings"),
+    "what_to_watch_next": ("news", "earnings", "fundamentals", "signal"),
+    "price_move_summary": ("market_data", "news", "earnings", "signal"),
     "price_change_pct": ("market_data",),
-    "volume_context": ("market_data",),
+    "volume_context": ("market_data", "signal"),
     "ranked_causes": ("market_data", "news", "earnings", "fundamentals"),
     "overall_confidence": ("market_data", "news", "earnings", "fundamentals"),
     "bias": ("market_data", "fundamentals", "news", "analyst_signal"),
@@ -188,6 +188,24 @@ def _extract_legacy_sources(bundle: AgentEvidenceBundle) -> list[SourceMetadata]
                     confidence=0.7,
                     retrieved_at=retrieved_at,
                     fields=sorted(ticker_evidence.earnings.keys()),
+                )
+            )
+        if _has_payload(getattr(ticker_evidence, "signal", None)):
+            signal_fields = (
+                sorted(ticker_evidence.signal.keys())
+                if isinstance(ticker_evidence.signal, dict)
+                else []
+            )
+            sources.append(
+                SourceMetadata(
+                    source_id=_source_id("signal", ticker),
+                    source_type="signal",
+                    ticker=ticker,
+                    provider="signal engine",
+                    tool="signal",
+                    confidence=0.7,
+                    retrieved_at=retrieved_at,
+                    fields=signal_fields,
                 )
             )
     return sources

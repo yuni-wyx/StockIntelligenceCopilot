@@ -125,6 +125,20 @@ def _source_metadata_for_result(result: ToolResult) -> list[SourceMetadata]:
             )
         ]
 
+    if result.tool == ToolName.SIGNAL.value:
+        return [
+            SourceMetadata(
+                source_id=_source_id("signal", ticker),
+                source_type="signal",
+                ticker=ticker,
+                provider="signal engine",
+                tool=result.tool,
+                confidence=0.7,
+                retrieved_at=retrieved_at,
+                fields=sorted(result.data.keys()),
+            )
+        ]
+
     return []
 
 
@@ -187,6 +201,9 @@ class EvidenceAggregator:
 
             elif tool == ToolName.EARNINGS:
                 ev.earnings = result.data
+
+            elif tool == ToolName.SIGNAL:
+                ev.signal = result.data
 
         return AggregatedEvidence(
             mode=plan.mode,

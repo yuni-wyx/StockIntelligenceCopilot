@@ -2,6 +2,9 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { SignalPanel } from "@/components/copilot/SignalPanel";
+import { SignalPayload, extractSignalViewModel } from "@/components/copilot/signal";
+import { useLanguage } from "@/context/LanguageContext";
 import { buildApiUrl } from "@/lib/apiBase";
 import { detectTickerMarket, normalizeTicker } from "@/lib/tickerMap";
 
@@ -52,6 +55,7 @@ type CopilotOutput = {
   price_move_summary?: string;
   overall_confidence?: number;
   ticker?: string;
+  signal?: SignalPayload;
   price_change_pct?: number;
   ranked_causes?: Array<{
     rank?: number;
@@ -86,6 +90,7 @@ type CopilotOutput = {
     severity: string;
   }>;
   confidence_score?: number;
+  volume_context?: string;
 };
 
 export default function CopilotPage() {
@@ -195,6 +200,7 @@ function CopilotScreen({
   initialMode: Mode;
   initialTicker: string;
 }) {
+  const { t } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -445,6 +451,7 @@ function CopilotScreen({
   }, [output]);
 
   const tickerMarket = useMemo(() => detectTickerMarket(ticker), [ticker]);
+  const signal = useMemo(() => extractSignalViewModel(output), [output]);
 
   const latestMessage = useMemo(() => {
     for (let i = events.length - 1; i >= 0; i -= 1) {
@@ -496,7 +503,7 @@ function CopilotScreen({
           onClick={() => router.push("/")}
           className="text-xl font-semibold hover:opacity-80"
         >
-          Stock Intelligence Copilot
+          {t.appName}
         </button>
 
         <div className="mt-3 flex gap-2">
@@ -504,7 +511,7 @@ function CopilotScreen({
             onClick={() => router.push("/portfolio")}
             className="rounded-xl border border-white/10 bg-zinc-900 px-4 py-2 text-sm"
           >
-            Portfolio Mode
+            {t.portfolio}
           </button>
         </div>
 
@@ -524,7 +531,7 @@ function CopilotScreen({
                       : "bg-zinc-900 border-white/10"
                   }`}
                 >
-                  {m}
+                  {m === "trade" ? "trade" : m === "research" ? t.research : t.explain}
                 </button>
               ))}
             </div>
@@ -539,8 +546,8 @@ function CopilotScreen({
 
             {ticker ? (
               <div className="mt-2 text-xs text-zinc-400">
-                Canonical: {normalizeTicker(ticker)}
-                {tickerMarket ? ` • Market: ${tickerMarket}` : ""}
+                {t.canonicalSymbol}: {normalizeTicker(ticker)}
+                {tickerMarket ? ` • ${t.market}: ${tickerMarket}` : ""}
               </div>
             ) : null}
 
@@ -599,6 +606,7 @@ function CopilotScreen({
               <div className="mt-6 text-sm space-y-2">
                 <div>{output.fundamental_summary}</div>
                 <div>{output.recent_news_summary}</div>
+                <SignalPanel signal={signal} />
                 <div className="text-green-400">{output.bull_case}</div>
                 <div className="text-red-400">{output.bear_case}</div>
                 {output.error && (
@@ -612,6 +620,7 @@ function CopilotScreen({
               <div className="mt-6 text-sm space-y-2">
                 <div>{output.price_move_summary}</div>
                 <div>Confidence: {output.overall_confidence ?? 0}</div>
+                <SignalPanel signal={signal} />
                 {output.ranked_causes?.length ? (
                   <div className="space-y-2 pt-2">
                     {output.ranked_causes.slice(0, 3).map((cause, index) => (

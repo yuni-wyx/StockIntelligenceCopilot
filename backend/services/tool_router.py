@@ -14,7 +14,6 @@ Design:
 
 from __future__ import annotations
 
-import traceback
 from typing import Any, Callable, Dict, List
 
 try:
@@ -25,6 +24,7 @@ try:
     from ..tools.fundamentals_tool import FundamentalsRequest, fetch_fundamentals
     from ..tools.market_data_tool import MarketDataRequest, fetch_market_data
     from ..tools.news_tool import NewsRequest, fetch_news
+    from ..tools.signal_tool import SignalToolRequest, fetch_signal
 except ImportError:
     from schemas.evidence_schema import ToolResult
     from schemas.planner_schema import ExecutionPlan, ToolCallSpec, ToolName
@@ -33,6 +33,7 @@ except ImportError:
     from tools.fundamentals_tool import FundamentalsRequest, fetch_fundamentals
     from tools.market_data_tool import MarketDataRequest, fetch_market_data
     from tools.news_tool import NewsRequest, fetch_news
+    from tools.signal_tool import SignalToolRequest, fetch_signal
 
 
 # ── Tool handler registry ─────────────────────────────────────────────────────
@@ -117,11 +118,22 @@ def _handle_earnings(spec: ToolCallSpec) -> Dict[str, Any]:
     }
 
 
+def _handle_signal(spec: ToolCallSpec) -> Dict[str, Any]:
+    req = SignalToolRequest(
+        ticker=spec.ticker,
+        benchmark=spec.params.get("benchmark", "SPY"),
+        horizon_days=spec.params.get("horizon_days", 30),
+    )
+    result = fetch_signal(req)
+    return result.model_dump(mode="json")
+
+
 _HANDLERS: Dict[ToolName, Callable[[ToolCallSpec], Dict[str, Any]]] = {
     ToolName.MARKET_DATA:  _handle_market_data,
     ToolName.FUNDAMENTALS: _handle_fundamentals,
     ToolName.NEWS:         _handle_news,
     ToolName.EARNINGS:     _handle_earnings,
+    ToolName.SIGNAL:       _handle_signal,
 }
 
 
@@ -173,5 +185,5 @@ class ToolRouter:
                 ticker=spec.ticker,
                 success=False,
                 data={},
-                error=f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}",
+                error=f"{type(exc).__name__}: {exc}",
             )

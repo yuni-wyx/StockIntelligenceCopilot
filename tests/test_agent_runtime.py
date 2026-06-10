@@ -229,6 +229,243 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertIn("final_output", event_types)
         self.assertEqual(events[-1].type, "final_output")
 
+    def test_execute_agent_task_continues_when_signal_tool_fails(self) -> None:
+        from backend.pipeline.agent_runtime import execute_agent_task
+        from backend.schemas.agent import AgentEvidenceBundle, AgentPlan, AgentTask, AgentTaskType
+        from backend.schemas.evidence_schema import AggregatedEvidence, TickerEvidence, ToolResult
+        from backend.schemas.output_schema import StockResearchOutput
+
+        task = AgentTask(task_type=AgentTaskType.RESEARCH, tickers=["TSLA"])
+        failed_signal = ToolResult(
+            tool="signal",
+            ticker="TSLA",
+            success=False,
+            data={},
+            error="ValueError: Insufficient ticker history. Need at least 20 records.",
+        )
+        evidence = AggregatedEvidence(
+            mode="stock_research",
+            tickers_evidence={
+                "TSLA": TickerEvidence(
+                    ticker="TSLA",
+                    market_data={"current_price": 100.0},
+                )
+            },
+            total_tool_calls=2,
+            successful_calls=1,
+        )
+        final_output = StockResearchOutput(
+            ticker="TSLA",
+            fundamental_summary="Signal unavailable, but core research still succeeded.",
+            recent_news_summary="",
+            bull_case="",
+            bear_case="",
+            what_to_watch_next=[],
+            overall_sentiment="NEUTRAL",
+        )
+
+        with patch(
+            "backend.pipeline.agent_runtime.classify_and_plan",
+            return_value=("intent", object()),
+        ), patch(
+            "backend.pipeline.agent_runtime.retrieve_evidence",
+            return_value=([failed_signal], evidence),
+        ), patch(
+            "backend.pipeline.agent_runtime.build_agent_plan_from_execution_plan",
+            return_value=AgentPlan(
+                task_type=AgentTaskType.RESEARCH,
+                summary="Research TSLA",
+                expected_outputs=["fundamental_summary"],
+                metadata={},
+            ),
+        ), patch(
+            "backend.pipeline.agent_runtime.build_agent_evidence_from_aggregated_evidence",
+            return_value=AgentEvidenceBundle(
+                context={"raw_query": "research TSLA"},
+                external_evidence={},
+            ),
+        ), patch(
+            "backend.pipeline.agent_runtime.synthesise_agent_output",
+            return_value=final_output,
+        ):
+            result = execute_agent_task(task)
+
+        self.assertEqual(result.output.ticker, "TSLA")
+        self.assertEqual(result.output_type, "StockResearchOutput")
+
+    def test_signal_evidence_is_promoted_into_external_evidence(self) -> None:
+        from backend.pipeline.agent_runtime import build_agent_evidence_from_aggregated_evidence
+        from backend.schemas.agent import AgentPlan, AgentTask, AgentTaskType
+        from backend.schemas.evidence_schema import AggregatedEvidence, TickerEvidence
+
+        task = AgentTask(task_type=AgentTaskType.RESEARCH, tickers=["TSLA"])
+        plan = AgentPlan(
+            task_type=AgentTaskType.RESEARCH,
+            summary="Research TSLA",
+            expected_outputs=["fundamental_summary"],
+        )
+        evidence = AggregatedEvidence(
+            mode="stock_research",
+            tickers_evidence={
+                "TSLA": TickerEvidence(
+                    ticker="TSLA",
+                    signal={
+                        "ticker": "TSLA",
+                        "benchmark": "SPY",
+                        "horizon_days": 30,
+                        "signal_score": 61.0,
+                        "signal_band": "Strong",
+                        "confidence": "Medium",
+                        "positive_signals": ["Relative strength is positive."],
+                        "negative_signals": [],
+                        "data_caveats": [],
+                        "disclaimer": "Deterministic signal only.",
+                        "feature_snapshot": {"relative_return_20d": 7.1},
+                    },
+                )
+            },
+            total_tool_calls=1,
+            successful_calls=1,
+        )
+
+        bundle = build_agent_evidence_from_aggregated_evidence(
+            task,
+            plan,
+            raw_query="research TSLA",
+            tool_results=[],
+            aggregated_evidence=evidence,
+        )
+
+        self.assertIn("signals", bundle.external_evidence)
+        self.assertEqual(
+            bundle.external_evidence["signals"]["TSLA"]["signal_score"],
+            61.0,
+        )
+
+    def test_research_synthesis_uses_signal_evidence_safely(self) -> None:
+        from backend.pipeline.synthesis import synthesise_agent_output
+        from backend.schemas.agent import AgentEvidenceBundle, AgentPlan, AgentTaskType
+        from backend.schemas.evidence_schema import AggregatedEvidence, TickerEvidence
+
+        plan = AgentPlan(
+            task_type=AgentTaskType.RESEARCH,
+            summary="Research TSLA",
+            expected_outputs=["fundamental_summary"],
+            metadata={
+                "legacy_execution_plan": {
+                    "mode": "stock_research",
+                    "tickers": ["TSLA"],
+                    "tool_calls": [],
+                    "analysis_focus": "Research TSLA",
+                    "expected_outputs": ["fundamental_summary"],
+                }
+            },
+        )
+        legacy_evidence = AggregatedEvidence(
+            mode="stock_research",
+            tickers_evidence={
+                "TSLA": TickerEvidence(
+                    ticker="TSLA",
+                    fundamentals={
+                        "profile": {"name": "Tesla", "sector": "Auto"},
+                        "valuation": {"pe_forward": 55},
+                        "income_statement": {
+                            "revenue_billions": 100,
+                            "revenue_growth_yoy": 0.12,
+                            "net_margin": 0.15,
+                        },
+                        "competitive_advantages": ["Scale"],
+                        "key_risks": ["Competition"],
+                    },
+                    signal={
+                        "ticker": "TSLA",
+                        "benchmark": "SPY",
+                        "horizon_days": 30,
+                        "signal_score": 61.0,
+                        "signal_band": "Strong",
+                        "confidence": "Low",
+                        "positive_signals": ["Relative strength is positive."],
+                        "negative_signals": ["Volatility is elevated."],
+                        "data_caveats": [
+                            "This is a heuristic signal estimate, not a calibrated probability."
+                        ],
+                        "disclaimer": "Not a prediction.",
+                        "feature_snapshot": {"relative_return_20d": 7.1},
+                    },
+                )
+            },
+            total_tool_calls=2,
+            successful_calls=2,
+        )
+        bundle = AgentEvidenceBundle(
+            context={"raw_query": "research TSLA"},
+            external_evidence={
+                "signals": {"TSLA": legacy_evidence.tickers_evidence["TSLA"].signal}
+            },
+            legacy_evidence=legacy_evidence,
+        )
+
+        output = synthesise_agent_output(bundle, plan)
+
+        self.assertIn(
+            "benchmark-relative strength versus SPY over 30 days is Strong",
+            output.fundamental_summary,
+        )
+        self.assertIn("score 61.0, confidence Low", output.fundamental_summary)
+        self.assertIn("Signal caveats:", output.recent_news_summary)
+        self.assertTrue(
+            any(point.item == "Relative signal review" for point in output.what_to_watch_next)
+        )
+
+    def test_explain_synthesis_continues_without_signal_evidence(self) -> None:
+        from backend.pipeline.synthesis import synthesise_agent_output
+        from backend.schemas.agent import AgentEvidenceBundle, AgentPlan, AgentTaskType
+        from backend.schemas.evidence_schema import AggregatedEvidence, TickerEvidence
+
+        plan = AgentPlan(
+            task_type=AgentTaskType.EXPLAIN,
+            summary="Explain TSLA",
+            expected_outputs=["price_move_summary"],
+            metadata={
+                "legacy_execution_plan": {
+                    "mode": "price_movement",
+                    "tickers": ["TSLA"],
+                    "tool_calls": [],
+                    "analysis_focus": "Explain TSLA",
+                    "expected_outputs": ["price_move_summary"],
+                }
+            },
+        )
+        legacy_evidence = AggregatedEvidence(
+            mode="price_movement",
+            tickers_evidence={
+                "TSLA": TickerEvidence(
+                    ticker="TSLA",
+                    market_data={
+                        "current_price": 100.0,
+                        "price_change_pct_1d": 2.0,
+                        "price_change_1d": 2.0,
+                        "volume_ratio": 1.2,
+                        "technicals": {"rsi_14": 55, "macd": 1.0},
+                    },
+                    news=[],
+                    earnings={},
+                )
+            },
+            total_tool_calls=1,
+            successful_calls=1,
+        )
+        bundle = AgentEvidenceBundle(
+            context={"raw_query": "explain TSLA"},
+            external_evidence={},
+            legacy_evidence=legacy_evidence,
+        )
+
+        output = synthesise_agent_output(bundle, plan)
+
+        self.assertIn("TSLA rallied", output.price_move_summary)
+        self.assertNotIn("Relative signal:", output.price_move_summary)
+
 
 if __name__ == "__main__":
     unittest.main()

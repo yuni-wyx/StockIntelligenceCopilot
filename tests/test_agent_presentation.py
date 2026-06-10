@@ -110,6 +110,19 @@ class AgentPresentationTest(unittest.TestCase):
                                     "relevance_score": 0.8,
                                 }
                             ],
+                            signal={
+                                "ticker": "TSLA",
+                                "benchmark": "SPY",
+                                "horizon_days": 30,
+                                "signal_score": 61.0,
+                                "signal_band": "Strong",
+                                "confidence": "Medium",
+                                "positive_signals": ["Relative strength is positive."],
+                                "negative_signals": [],
+                                "data_caveats": [],
+                                "disclaimer": "Deterministic signal only.",
+                                "feature_snapshot": {"relative_return_20d": 7.1},
+                            },
                         )
                     },
                     total_tool_calls=3,
@@ -138,6 +151,8 @@ class AgentPresentationTest(unittest.TestCase):
         }
         self.assertIn("buy_zone", linked_fields)
         self.assertIn("reasoning", linked_fields)
+        source_types = {item["source_type"] for item in payload["evidence_provenance"]}
+        self.assertIn("signal", source_types)
 
     def test_unsupported_claim_detection_flags_unsafe_certainty(self) -> None:
         from backend.services.evidence_provenance import build_claim_evidence

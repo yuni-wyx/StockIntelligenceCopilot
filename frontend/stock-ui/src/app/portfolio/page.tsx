@@ -13,8 +13,11 @@ import type {
   EditableHolding,
   HoldingValidationField,
   ScenarioForm,
+  StressTestForm,
+  StressTestResult,
   WealthStudioOperation,
 } from "@/components/wealth-studio/types";
+import { runPortfolioStressTest } from "@/components/wealth-studio/stressTest";
 import {
   calculateEditableHoldingMetrics,
   normalizeHoldings,
@@ -87,6 +90,13 @@ export default function PortfolioPage() {
   const [comparison, setComparison] = useState<ScenarioComparisonResponse | null>(null);
   const [comparisonScenarios, setComparisonScenarios] = useState<ComparisonScenarioDraft[]>([]);
   const [comparisonValidation, setComparisonValidation] = useState<string[]>([]);
+  const [stressTestForm, setStressTestForm] = useState<StressTestForm>({
+    preset: "broad_market_20",
+    customTicker: "",
+    customShockPct: "-20",
+  });
+  const [stressTestError, setStressTestError] = useState<string | null>(null);
+  const [stressTestResult, setStressTestResult] = useState<StressTestResult | null>(null);
   const [scenarioForm, setScenarioForm] = useState<ScenarioForm>({
     sellTicker: "",
     sellShares: "",
@@ -326,6 +336,29 @@ export default function PortfolioPage() {
     }
   }
 
+  function handleRunStressTest() {
+    const { result, error: validationError } = runPortfolioStressTest(holdings, stressTestForm, {
+      stressTestNoValidHoldings: ws.stressTestNoValidHoldings,
+      stressTestCustomTickerRequired: ws.stressTestCustomTickerRequired,
+      stressTestShockRequired: ws.stressTestShockRequired,
+      stressTestShockRange: ws.stressTestShockRange,
+      stressTestBroadMarketExplanation: ws.stressTestBroadMarketExplanation,
+      stressTestTechnologyExplanation: ws.stressTestTechnologyExplanation,
+      stressTestTaiwanExplanation: ws.stressTestTaiwanExplanation,
+      stressTestBondExplanation: ws.stressTestBondExplanation,
+      stressTestCustomExplanation: ws.stressTestCustomExplanation,
+      stressTestNoMatchingHoldings: ws.stressTestNoMatchingHoldings,
+    });
+
+    setStressTestError(validationError);
+    setStressTestResult(result);
+  }
+
+  function handleStressTestFormChange(updater: (prev: StressTestForm) => StressTestForm) {
+    setStressTestError(null);
+    setStressTestForm(updater);
+  }
+
   return (
     <div className="min-h-screen bg-[#0d0c0a] px-4 py-6 text-white sm:px-6">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -398,6 +431,11 @@ export default function PortfolioPage() {
               scenarioKindOptions={scenarioKindOptions}
               scenarioKindLabel={scenarioKindLabel}
               scenarioKindHelper={scenarioKindHelper}
+              stressTestForm={stressTestForm}
+              stressTestError={stressTestError}
+              stressTestResult={stressTestResult}
+              onStressTestFormChange={handleStressTestFormChange}
+              onRunStressTest={handleRunStressTest}
             />
           </div>
         </div>

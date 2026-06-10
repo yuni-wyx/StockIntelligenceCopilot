@@ -11,9 +11,15 @@ except ImportError:
 
 
 @traceable(name="synthesis", run_type="chain", tags=["synthesis"])
-def trace_synthesis(evidence, plan):
+def trace_synthesis(evidence, plan, runtime_signals=None):
     chain = build_synthesis_chain()
-    return chain.invoke(SynthesisInput(evidence=evidence, plan=plan))
+    return chain.invoke(
+        SynthesisInput(
+            evidence=evidence,
+            plan=plan,
+            runtime_signals=runtime_signals or {},
+        )
+    )
 
 
 def synthesise_output(evidence, plan):
@@ -36,7 +42,11 @@ def synthesise_agent_output(bundle: AgentEvidenceBundle, plan: AgentPlan):
             from ..schemas.planner_schema import ExecutionPlan
         except ImportError:
             from schemas.planner_schema import ExecutionPlan
-        return trace_synthesis(bundle.legacy_evidence, ExecutionPlan(**legacy_plan))
+        return trace_synthesis(
+            bundle.legacy_evidence,
+            ExecutionPlan(**legacy_plan),
+            runtime_signals=bundle.external_evidence.get("signals", {}),
+        )
 
     if plan.task_type == AgentTaskType.PORTFOLIO_ANALYSIS:
         try:

@@ -19,6 +19,10 @@ class ToolResult(BaseModel):
     tool: str = Field(..., description="Tool name that produced this result.")
     ticker: str = Field(..., description="Ticker this result relates to.")
     success: bool = Field(..., description="Whether the tool executed without error.")
+    error: str | None = Field(
+        default=None,
+        description="Safe error message if success=False.",
+    )
     data: Dict[str, Any] = Field(
         default_factory=dict,
         description="Tool payload (structure varies by tool).",
@@ -35,6 +39,7 @@ class SourceMetadata(BaseModel):
         "filing",
         "fundamentals",
         "analyst_signal",
+        "signal",
         "earnings",
         "portfolio_input",
         "portfolio_metric",
@@ -85,6 +90,7 @@ class TickerEvidence(BaseModel):
     ticker: str
     market_data: Optional[Dict[str, Any]] = None
     fundamentals: Optional[Dict[str, Any]] = None
+    signal: Optional[Dict[str, Any]] = None
     news: Optional[List[Dict[str, Any]]] = None
     earnings: Optional[Dict[str, Any]] = None
     source_metadata: List[SourceMetadata] = Field(default_factory=list)
@@ -106,7 +112,7 @@ class TickerEvidence(BaseModel):
     @property
     def completeness_score(self) -> float:
         """Fraction of expected evidence slots that were filled (0–1)."""
-        slots = [self.market_data, self.fundamentals, self.news, self.earnings]
+        slots = [self.market_data, self.fundamentals, self.signal, self.news, self.earnings]
         filled = sum(1 for s in slots if s is not None)
         return filled / len(slots)
 

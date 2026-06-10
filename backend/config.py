@@ -17,7 +17,10 @@ ENABLE_LLM_TRADE_SYNTHESIS = os.getenv(
 ).strip().lower() in {"1", "true", "yes", "on"}
 BACKEND_CORS_ORIGINS = [
     origin.strip()
-    for origin in os.getenv("BACKEND_CORS_ORIGINS", "http://localhost:3000").split(",")
+    for origin in os.getenv(
+        "BACKEND_CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
     if origin.strip()
 ]
 

@@ -98,6 +98,68 @@ def _safe_confidence_int(value: Any) -> int:
     return max(0, min(100, conf))
 
 
+def _signal_payload(
+    evidence: AggregatedEvidence,
+    ticker: str,
+    runtime_signals: dict[str, Any] | None = None,
+):
+    runtime_signals = runtime_signals or {}
+    if ticker in runtime_signals and runtime_signals[ticker]:
+        return runtime_signals[ticker]
+    ev = evidence.get_ticker(ticker)
+    if ev and getattr(ev, "signal", None):
+        return ev.signal
+    return None
+
+
+def _signal_summary_text(signal_payload: dict[str, Any] | None) -> str | None:
+    if not signal_payload:
+        return None
+    benchmark = signal_payload.get("benchmark")
+    horizon_days = signal_payload.get("horizon_days")
+    signal_score = signal_payload.get("signal_score")
+    signal_band = signal_payload.get("signal_band")
+    confidence = signal_payload.get("confidence")
+    if None in {benchmark, horizon_days, signal_score, signal_band, confidence}:
+        return None
+    return (
+        "Relative signal: benchmark-relative strength versus "
+        f"{benchmark} over {horizon_days} days is {signal_band} "
+        f"(score {signal_score}, confidence {confidence})."
+    )
+
+
+def _signal_caveat_text(signal_payload: dict[str, Any] | None) -> str | None:
+    if not signal_payload:
+        return None
+    caveats = signal_payload.get("data_caveats") or []
+    confidence = signal_payload.get("confidence")
+    if confidence == "Low" or caveats:
+        if caveats:
+            return (
+                "Signal caveats: "
+                + " ".join(str(item) for item in caveats[:2])
+            )
+        return "Signal confidence is low, so the relative signal should be treated cautiously."
+    return None
+
+
+def _signal_watch_point(signal_payload: dict[str, Any] | None) -> WatchPoint | None:
+    summary = _signal_summary_text(signal_payload)
+    if summary is None:
+        return None
+    caveat = _signal_caveat_text(signal_payload)
+    return WatchPoint(
+        item="Relative signal review",
+        reason=(
+            f"{summary} "
+            "Use it as a heuristic benchmark-relative strength check, not a price prediction."
+            + (f" {caveat}" if caveat else "")
+        ).strip(),
+        timeframe="~30 days",
+    )
+
+
 def _llm_trade_synthesis_enabled() -> bool:
     return llm_trade_synthesis_enabled()
 
@@ -195,10 +257,16 @@ def _heuristic_trade_decision(
 # ── Mode 1: Stock Research ────────────────────────────────────────────────────
 
 def _synthesise_research(
-    evidence: AggregatedEvidence, plan: ExecutionPlan
+    evidence: AggregatedEvidence,
+    plan: ExecutionPlan,
+    runtime_signals: dict[str, Any] | None = None,
 ) -> StockResearchOutput:
     ticker = plan.tickers[0]
     ev = evidence.get_ticker(ticker)
+
+    signal_payload = _signal_payload(evidence, ticker, runtime_signals)
+    signal_summary = _signal_summary_text(signal_payload)
+    signal_caveat = _signal_caveat_text(signal_payload)
 
     if ev and ev.fundamentals:
         f = ev.fundamentals
@@ -218,6 +286,8 @@ def _synthesise_research(
         )
     else:
         fund_summary = f"Fundamental data unavailable for {ticker}."
+    if signal_summary:
+        fund_summary = f"{fund_summary} {signal_summary}"
 
     if ev and ev.news:
         headlines = [a.get("title", "") for a in ev.news[:3]]
@@ -227,6 +297,8 @@ def _synthesise_research(
     else:
         news_summary = "No recent news data available."
         avg_score = 0.0
+    if signal_caveat:
+        news_summary = f"{news_summary} {signal_caveat}"
 
     bull_points: List[str] = []
     if ev and ev.fundamentals:
@@ -312,6 +384,9 @@ def _synthesise_research(
             timeframe="Rolling",
         )
     )
+    signal_watch_point = _signal_watch_point(signal_payload)
+    if signal_watch_point is not None:
+        watch_points.append(signal_watch_point)
 
     sentiment = _sentiment_label(avg_score)
 
@@ -330,7 +405,9 @@ def _synthesise_research(
 # ── Mode 2: Price Movement Explanation ───────────────────────────────────────
 
 def _synthesise_price_movement(
-    evidence: AggregatedEvidence, plan: ExecutionPlan
+    evidence: AggregatedEvidence,
+    plan: ExecutionPlan,
+    runtime_signals: dict[str, Any] | None = None,
 ) -> PriceMovementOutput:
     ticker = plan.tickers[0]
     ev = evidence.get_ticker(ticker)
@@ -340,6 +417,10 @@ def _synthesise_price_movement(
     price_chg = md.get("price_change_1d", 0.0) if md else 0.0
     current = md.get("current_price", 0.0) if md else 0.0
     vol_ratio = md.get("volume_ratio", 1.0) if md else 1.0
+
+    signal_payload = _signal_payload(evidence, ticker, runtime_signals)
+    signal_summary = _signal_summary_text(signal_payload)
+    signal_caveat = _signal_caveat_text(signal_payload)
 
     move_direction = "rallied" if price_pct >= 0 else "declined"
     volume_label = (
@@ -358,6 +439,10 @@ def _synthesise_price_movement(
         f"{ticker} {move_direction} {_fmt_pct(price_pct)} "
         f"(${price_chg:+.2f}) to ${current:.2f}. {vol_context}"
     )
+    if signal_summary:
+        price_move_summary = f"{price_move_summary} {signal_summary}"
+    if signal_caveat:
+        vol_context = f"{vol_context} {signal_caveat}"
 
     candidates: List[Tuple[str, str, List[str], float]] = []
 
@@ -467,6 +552,9 @@ def _synthesise_price_movement(
                 timeframe=f"~{ev.earnings['days_to_next_earnings']} days",
             )
         )
+    signal_watch_point = _signal_watch_point(signal_payload)
+    if signal_watch_point is not None:
+        watch_points.append(signal_watch_point)
 
     return PriceMovementOutput(
         ticker=ticker,
@@ -483,7 +571,9 @@ def _synthesise_price_movement(
 # ── Mode 3: Watchlist Monitoring ──────────────────────────────────────────────
 
 def _synthesise_watchlist(
-    evidence: AggregatedEvidence, plan: ExecutionPlan
+    evidence: AggregatedEvidence,
+    plan: ExecutionPlan,
+    runtime_signals: dict[str, Any] | None = None,
 ) -> WatchlistMonitorOutput:
     tickers = plan.tickers
     ticker_summaries: List[TickerWeeklySummary] = []
@@ -641,6 +731,11 @@ Rules:
 - Confidence must be an integer from 0 to 100
 - Use only the provided ticker evidence
 - If evidence is weak or mixed, return Neutral with lower confidence
+- If signal evidence is present, do NOT alter signal_score, signal_band,
+  confidence, benchmark, or horizon values
+- Do NOT describe any signal evidence as a price prediction
+- Do NOT make a trading recommendation from signal evidence alone
+- Mention signal caveats when confidence is Low or data_caveats are present
 """
     )
 
@@ -649,7 +744,9 @@ Rules:
 
 
 def _synthesise_trade(
-    evidence: AggregatedEvidence, plan: ExecutionPlan
+    evidence: AggregatedEvidence,
+    plan: ExecutionPlan,
+    runtime_signals: dict[str, Any] | None = None,
 ) -> TradingDecisionOutput:
     ticker = plan.tickers[0]
     ev = evidence.get_ticker(ticker)
@@ -702,9 +799,15 @@ _SYNTHESISERS = {
 class SynthesisInput:
     """Container passed into the Synthesis chain."""
 
-    def __init__(self, evidence: AggregatedEvidence, plan: ExecutionPlan):
+    def __init__(
+        self,
+        evidence: AggregatedEvidence,
+        plan: ExecutionPlan,
+        runtime_signals: dict[str, Any] | None = None,
+    ):
         self.evidence = evidence
         self.plan = plan
+        self.runtime_signals = runtime_signals or {}
 
 
 def build_synthesis_chain() -> RunnableLambda:
@@ -716,6 +819,6 @@ def build_synthesis_chain() -> RunnableLambda:
         synth = _SYNTHESISERS.get(mode)
         if synth is None:
             raise ValueError(f"No synthesiser for mode: {inp.plan.mode}")
-        return synth(inp.evidence, inp.plan)
+        return synth(inp.evidence, inp.plan, inp.runtime_signals)
 
     return RunnableLambda(_run).with_config(run_name="SynthesisChain")

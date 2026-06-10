@@ -203,6 +203,13 @@ def build_agent_evidence_from_aggregated_evidence(
                 if hasattr(aggregated_evidence, "model_dump")
                 else {}
             ),
+            "signals": {
+                ticker: ticker_evidence.signal
+                for ticker, ticker_evidence in getattr(
+                    aggregated_evidence, "tickers_evidence", {}
+                ).items()
+                if getattr(ticker_evidence, "signal", None) is not None
+            },
         },
         tool_results=serialized_results,
         legacy_evidence=aggregated_evidence,

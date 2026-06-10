@@ -1,89 +1,96 @@
 # Stock Intelligence Copilot
 
-Stock Intelligence Copilot is a full-stack equity and portfolio intelligence app with a FastAPI backend and a Next.js frontend. It supports ticker research, price-move explanation, trade setup generation, watchlist monitoring, personal portfolio analysis, scenario simulation, live reasoning timelines, and both US and Taiwan market inputs.
+**Stock Intelligence Copilot** is a full-stack AI investment research and portfolio intelligence platform. It combines a FastAPI backend, a Next.js frontend, a unified agent runtime, deterministic portfolio calculations, evidence aggregation, streaming copilot responses, and a Wealth Studio workspace for personal portfolio review.
 
-## Overview
+The project is built for research, education, and demo use. It is not financial advice, does not predict guaranteed returns, and should describe portfolio signals as heuristic estimates or suggested review items.
 
-The project combines:
+## Current Product Status
 
-- A modular backend agent runtime for task interpretation, planning, tool routing, evidence building, synthesis, and API presentation
-- A frontend copilot UI with live streaming updates and graceful fallback when SSE is unavailable
-- Support for US symbols such as `NVDA` and Taiwan inputs such as `2330`, `00878`, `00687B`, `2330.TW`, and `台積電`
-- A deterministic portfolio calculator plus portfolio scenario analysis layer
+The app has evolved from a stock lookup tool into a broader investment copilot:
 
-## Architecture
+- Research, Explain, and Trade copilot flows are available.
+- Wealth Studio supports holdings input, portfolio analysis, scenario simulation, and scenario comparison.
+- Portfolio calculations use deterministic formulas for cost basis, current value, unrealized gain/loss, and return percentage.
+- Stress testing, Signal Engine work, evidence aggregation, and provenance-aware insights are active product directions.
+- SSE streaming includes cancellation cleanup so Stop, refresh, navigation, and aborted requests do not silently leave orphaned streams.
+- Runtime and fallback errors are expected to return non-2xx HTTP statuses instead of successful `200` responses with error payloads.
+
+## Feature Highlights
+
+- **Copilot Research**: ticker-level research for US and Taiwan stocks, ETFs, and funds.
+- **Explain Mode**: price-move explanation with ranked drivers and caveats.
+- **Trade Mode**: structured setup analysis with risk framing.
+- **Watchlist Monitoring**: multi-symbol monitoring and relative signal review.
+- **Wealth Studio**: portfolio workspace for holdings, analysis, scenario review, and AI portfolio coaching.
+- **Portfolio Analysis**: concentration, allocation, income, missing data, and gain/loss review.
+- **Scenario Builder**: compare sell, buy, concentration reduction, and add-position scenarios while preserving backend payload shape.
+- **Stress Testing**: evaluate portfolio sensitivity under hypothetical downside or thematic pressure.
+- **Signal Engine**: relative signal layer for market, portfolio, and watchlist review.
+- **Evidence / Provenance**: source-aware architecture for news, filings, fundamentals, and analyst-style signals.
+
+## Architecture Summary
 
 ```mermaid
 flowchart LR
     U["User"] --> F["Next.js Frontend"]
     F --> A["FastAPI API"]
-    A --> AR["Unified Agent Runtime"]
-    AR --> P["Planner"]
-    P --> TR["Tool Router"]
-    TR --> T["Tools / Services"]
-    T --> EB["Evidence Bundle"]
-    EB --> S["Synthesis"]
-    S --> AP["API Presentation Layer"]
-    AP --> F
+    A --> R["Unified Agent Runtime"]
+    R --> P["Planner"]
+    P --> T["Tool Router / Services"]
+    T --> E["Evidence Bundle"]
+    E --> S["Synthesis"]
+    S --> O["Response / SSE Events"]
+    O --> F
 ```
 
-Backend responsibilities are intentionally separated:
+Core modules:
 
-- `backend/pipeline/agent_runtime.py`: unified task execution contract for ticker and portfolio tasks
-- `backend/pipeline/planning.py`: query interpretation and execution planning
-- `backend/pipeline/retrieval.py`: tool routing and evidence aggregation
-- `backend/pipeline/synthesis.py`: unified synthesis entrypoint plus legacy ticker synthesis
-- `backend/pipeline/orchestrator.py`: end-to-end execution and streaming events
-- `backend/api/presentation.py`: safe JSON/SSE presentation and fallback shaping
+- `backend/main.py`: FastAPI app, route assembly, request/response wiring
+- `backend/schemas/agent.py`: shared runtime task/result contracts
+- `backend/pipeline/agent_runtime.py`: unified execution entrypoint
+- `backend/pipeline/route_adapters.py`: route-to-runtime adapters
+- `backend/api/agent_presentation.py`: non-streaming response presentation
+- `backend/api/agent_streaming.py`: SSE streaming adapter and cancellation handling
+- `backend/services/portfolio_calculator.py`: deterministic portfolio calculations
+- `backend/pipeline/portfolio_orchestrator.py`: portfolio analysis and scenario workflows
+- `frontend/stock-ui/src/app/copilot/page.tsx`: copilot UI
+- `frontend/stock-ui/src/app/portfolio/page.tsx`: Wealth Studio UI
+- `frontend/stock-ui/src/lib`: frontend API, ticker, and state helpers
 
-## Unified Runtime Migration Status
+## Runtime Migration
 
-Non-streaming routes:
-- research: runtime
-- explain: runtime
-- trade: runtime
-- watchlist: runtime
-- portfolio: runtime
+The backend is converging on this shared contract:
 
-Streaming routes:
-- research: runtime streaming adapter
-- explain: runtime streaming adapter
-- trade: runtime streaming adapter
-- watchlist: no public stream route
+```text
+AgentTask -> Planner -> Tool Router / Evidence -> Synthesis -> AgentResult
+```
 
-The runtime streaming adapter currently emits compatibility-focused milestones that preserve the existing SSE event contract for the frontend. Deeper tool-level or step-by-step runtime streaming can be expanded later without changing the public streaming routes.
+Runtime-backed routes include:
 
-The current runtime supports these task types through a shared contract:
+- `POST /api/research`
+- `POST /api/explain`
+- `POST /api/trade`
+- `POST /api/watchlist`
+- `POST /api/portfolio/analyze`
+- `POST /api/portfolio/scenario`
+- `POST /api/portfolio/scenarios/compare`
+- `POST /api/portfolio/agent`
 
-- research
-- explain
-- trade
-- watchlist
-- portfolio_analysis
-- portfolio_scenario
-- portfolio_scenarios_compare
-- portfolio_agent
+Streaming routes include:
 
-## Key Features
+- `POST /api/research/stream`
+- `POST /api/explain/stream`
+- `POST /api/trade/stream`
 
-- Research workflow for fundamental and news-based stock analysis
-- Explain workflow for price-move attribution with ranked drivers
-- Trade workflow for structured setup generation
-- Watchlist workflow for multi-symbol monitoring
-- Portfolio workflow for holdings analysis and reallocation scenarios
-- Portfolio persistence for local single-user demo mode
-- Portfolio agent recommendations backed by deterministic metrics plus tool evidence
-- Taiwan stock normalization and market detection
-- Structured reasoning timeline in the UI without exposing hidden chain-of-thought
-- Streaming backend events with graceful fallback to standard responses
+The streaming adapter preserves the existing frontend SSE event contract while supporting safer cancellation and disconnect cleanup.
 
-## Supported Ticker Formats
+## Supported Ticker Inputs
 
 - US symbols: `NVDA`, `AAPL`, `TSLA`
 - Taiwan numeric codes: `2330`, `2317`, `2454`
 - Taiwan ETF / fund codes: `00878`, `00687B`
-- Taiwan Yahoo Finance symbols: `2330.TW`, `2317.TW`, `2454.TW`
-- Taiwan company names and aliases: `台積電`, `鴻海`, `聯發科`, `TSMC`, `Foxconn`, `MediaTek`
+- Yahoo-style Taiwan symbols: `2330.TW`, `2317.TW`, `2454.TW`
+- Taiwan aliases: `台積電`, `鴻海`, `聯發科`, `TSMC`, `Foxconn`, `MediaTek`
 
 Examples:
 
@@ -103,13 +110,16 @@ stock_intelligence_copilot/
 │   ├── schemas/
 │   ├── services/
 │   ├── tools/
-│   ├── symbols.py
 │   └── main.py
 ├── frontend/stock-ui/
+│   ├── src/app/
+│   ├── src/components/
+│   ├── src/i18n/
+│   └── src/lib/
 ├── tests/
+├── docs/
 ├── AGENTS.md
 ├── SKILL.md
-├── .github/workflows/ci.yml
 ├── Dockerfile
 ├── Makefile
 ├── docker-compose.yml
@@ -117,9 +127,11 @@ stock_intelligence_copilot/
 └── requirements.txt
 ```
 
-## Environment Variables
+## Environment Variable and API Key Policy
 
-Use either the root reference file or the backend-specific example:
+Do not introduce paid APIs, new LLM APIs, model training, embeddings, vector databases, cloud resources, or new API keys without asking Yuni first.
+
+Existing provider variables should be treated as optional or environment-specific unless the active workflow requires them:
 
 ```bash
 cp .env.example .env
@@ -128,67 +140,26 @@ cp backend/.env.example backend/.env
 
 The backend loads variables from `backend/.env`.
 
-Required:
+Common variables:
 
 - `OPENAI_API_KEY`
 - `ALPHA_VANTAGE_API_KEY`
-- `NEXT_PUBLIC_BACKEND_BASE_URL` for deployed frontend builds
-
-Optional:
-
+- `NEXT_PUBLIC_BACKEND_BASE_URL`
+- `BACKEND_CORS_ORIGINS`
+- `ENABLE_LLM_TRADE_SYNTHESIS`
 - `LANGCHAIN_API_KEY`
 - `LANGCHAIN_TRACING_V2`
 - `LANGCHAIN_PROJECT`
-- `BACKEND_CORS_ORIGINS`
-- `ENABLE_LLM_TRADE_SYNTHESIS`
 
-For deployed frontends, set the backend origin explicitly:
-
-```bash
-NEXT_PUBLIC_BACKEND_BASE_URL=https://your-backend.example.com
-```
-
-The frontend app appends `/api` internally.
-
-## Trade Synthesis Modes
-
-Trade mode uses deterministic synthesis by default for production and demo reliability. This is the recommended setting because it does not depend on an external LLM/provider call.
-
-An optional LLM-backed trade synthesis path remains available behind a feature flag:
-
-```bash
-ENABLE_LLM_TRADE_SYNTHESIS=true
-```
-
-Use `ENABLE_LLM_TRADE_SYNTHESIS=false` for the stable default. Treat the LLM trade path as optional and experimental.
-
-## Product Modes
-
-### Research Mode
-
-- Analyze any supported US/TW stock, ETF, or fund by ticker
-- Explain price moves
-- Generate trade setups
-- Monitor watchlists
-
-### Portfolio Mode
-
-- Input holdings with ticker, cost, shares, value, category, and notes
-- Calculate unrealized P/L, dividend estimates, and allocation weights
-- Review concentration and defensive allocation risk
-- Run sell/buy reallocation scenarios and compare before vs after
-- Save and reload a local demo portfolio
-- Ask a portfolio agent grounded questions about reallocation ideas
+Trade synthesis should remain deterministic by default for stable demos. Optional LLM-backed paths must stay feature-flagged and clearly described as optional.
 
 ## Local Setup
 
-### Prerequisites
+Prerequisites:
 
 - Python 3.11+
 - Node.js 20+ or 22+
 - npm
-
-### Install
 
 Backend:
 
@@ -204,33 +175,94 @@ cd frontend/stock-ui
 npm ci
 ```
 
-Or use the Makefile:
+Makefile helpers:
 
 ```bash
 make install-backend
 make install-frontend
 ```
 
-If `ruff` is missing locally even though it is listed in `requirements.txt`, refresh the backend environment with:
+## Safe Local Dev Workflow
 
-```bash
-make install-backend
-```
+This project has a documented local development hazard: opening `localhost:3000` previously caused severe memory spikes and Mac freezes.
 
-## Run Locally
+Likely contributors were:
 
-### Backend API
+- Next 16 development toolchain behavior
+- Turbopack
+- `reactCompiler: true`
+- `nxnode.bin` / `next-server` memory growth
+
+The safer setup is:
+
+- `reactCompiler: false`
+- frontend dev script uses `next dev --webpack`
+- curl-first checks before opening a browser
+
+Start servers only when needed:
 
 ```bash
 ./.venv/bin/python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Key routes:
+```bash
+cd frontend/stock-ui
+npm run dev
+```
+
+Before opening a browser, use:
+
+```bash
+curl -I http://localhost:3000
+curl -I http://localhost:3000/copilot
+curl -I http://localhost:3000/portfolio
+curl -I http://localhost:8000/health
+```
+
+Only after curl checks pass, open a browser manually. Safari Private Window is preferred for memory testing.
+
+Normal local dev memory can rise briefly, for example from around 500 MB to 700 MB, then settle. A danger sign is memory continuously rising into multiple GB and not dropping.
+
+For more detail, see [Local Development Troubleshooting](docs/local-dev-troubleshooting.md).
+
+## Running Locally
+
+Backend API:
+
+```bash
+./.venv/bin/python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Frontend:
+
+```bash
+cd frontend/stock-ui
+npm run dev
+```
+
+CLI examples:
+
+```bash
+./.venv/bin/python backend/main.py research NVDA
+./.venv/bin/python backend/main.py explain 2330
+./.venv/bin/python backend/main.py trade TSLA
+./.venv/bin/python backend/main.py watchlist AAPL NVDA 2330
+```
+
+## Key API Routes
+
+Ticker and copilot routes:
 
 - `POST /api/research`
 - `POST /api/explain`
 - `POST /api/trade`
 - `POST /api/watchlist`
+- `POST /api/research/stream`
+- `POST /api/explain/stream`
+- `POST /api/trade/stream`
+
+Portfolio routes:
+
 - `POST /api/portfolio/analyze`
 - `POST /api/portfolio/scenario`
 - `POST /api/portfolio/scenarios/compare`
@@ -241,322 +273,183 @@ Key routes:
 - `DELETE /api/portfolio/current`
 - `GET /api/portfolio/list`
 
-### Frontend
+## Error Handling Overview
 
-Before opening the frontend in a browser, read the local memory-safe workflow in
-[Local Development Troubleshooting](docs/local-dev-troubleshooting.md).
+The app should preserve frontend-compatible error fields while using correct HTTP semantics:
 
-```bash
-cd frontend/stock-ui
-npm run dev
-```
+- Successful responses remain 2xx.
+- Validation or user-input errors should return 400 or 422.
+- Runtime, tool, provider, or fallback failures should return 500 or 502.
+- Error responses should avoid internal tracebacks, secrets, or provider credentials.
+- Runtime failure must not be represented as HTTP 200 with an error payload.
 
-After curl checks pass, open:
+## SSE Streaming and Cancellation
 
-- Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+Streaming routes support live milestone events for Research, Explain, and Trade flows.
 
-### CLI
+Safety expectations:
 
-```bash
-./.venv/bin/python backend/main.py research NVDA
-./.venv/bin/python backend/main.py explain 2330
-./.venv/bin/python backend/main.py trade TSLA
-./.venv/bin/python backend/main.py watchlist AAPL NVDA 2330
-```
+- Stop, refresh, navigation, and request abort should cancel frontend fetch readers.
+- Frontend readers should be cancelled and release their stream locks.
+- Backend stream generators should handle cancellation, `GeneratorExit`, and disconnect checks safely.
+- Cancelled streams should not emit final success events.
+- Long-running agent work should not continue silently after the client disconnects.
 
-### Handy Commands
+## Testing Commands
 
-```bash
-make run-backend
-make run-frontend
-make test
-make lint
-```
-
-## Tests
-
-Run backend tests:
+Backend tests:
 
 ```bash
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Or:
-
-```bash
-make test
-```
-
-## Linting
-
-Backend:
+Backend lint:
 
 ```bash
 ./.venv/bin/python -m ruff check backend tests
 ```
 
-Frontend:
+Frontend lint:
 
 ```bash
 cd frontend/stock-ui
 npm run lint
 ```
 
-Both:
+Focused frontend lint example:
 
 ```bash
-make lint
+cd frontend/stock-ui
+npm run lint -- src/app/portfolio/page.tsx
 ```
 
-## Financial Disclaimer
+Use lightweight, relevant tests first. Do not run Playwright or browser automation unless explicitly requested.
 
-This project provides analysis, scenario comparison, and portfolio intelligence support. It does not provide guaranteed outcomes or personalized regulated investment advice. Missing data, estimated dividends, and market tool gaps should be reviewed before making real capital allocation decisions.
+## Demo Readiness Notes
 
-## Portfolio Health Score
+Strong demo path:
 
-Portfolio mode includes heuristic health scoring:
+1. Open the home page after curl checks pass.
+2. Show Copilot Research with a familiar ticker.
+3. Switch to Explain or Trade to show task-specific workflows.
+4. Open Wealth Studio.
+5. Add or load a small portfolio.
+6. Run Analyze Holdings.
+7. Highlight deterministic metrics: Current Value, Cost Basis, Unrealized Gain/Loss, Return %.
+8. Show heuristic portfolio snapshot and data quality caveats.
+9. Run a scenario or scenario comparison.
+10. Ask AI Portfolio Coach for a cautious review item.
 
-- `overall_score`
-- `diversification_score`
-- `concentration_score`
-- `income_score`
-- `defensive_score`
-- `growth_score`
+Avoid presenting heuristic scores as objective ratings. Use phrasing like "relative signal", "stress test", and "suggested review item."
 
-These scores are deterministic and useful for comparison, but they are not objective investment ratings.
+## Financial Safety and Wording
 
-## Exposure Heuristic Limitations
+This project must not imply:
 
-Theme, category, market, and defensive labels are heuristic. They are designed to be easy to extend and useful for portfolio review, but they do not replace a full holdings look-through system for every ETF or fund.
+- guaranteed returns
+- price prediction certainty
+- personalized regulated investment advice
+- objective investment ratings when the value is heuristic
 
-## Example Portfolio Questions
+Preferred language:
 
-- Should I sell part of 00878 and move into a Taiwan technology fund?
-- How much annual dividend would I lose if I sell half of my income ETF?
-- Is my portfolio too concentrated in AI / technology?
-- Which losing positions deserve review first?
+- heuristic estimate
+- relative signal
+- stress test
+- suggested review item
+- data quality caveat
+- not financial advice
 
-## Docker
+Any number shown in the UI or generated output should come from user input, deterministic calculation, fetched tool output, or explicit source metadata. If data is missing, say it is missing.
 
-### Full Stack with Docker Compose
+## Portfolio Insight Limitations
 
-```bash
-docker compose up --build
-```
+Portfolio insights combine deterministic calculations and heuristic estimates.
 
-Services:
+Deterministic examples:
 
-- Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend: [http://localhost:8000](http://localhost:8000)
+- cost basis = shares * average cost
+- current value = shares * current price
+- unrealized gain/loss = current value - cost basis
+- return percentage = unrealized gain/loss / cost basis
 
-### Backend Container Only
+Heuristic examples:
 
-Build:
+- diversification estimate
+- concentration estimate
+- defensive allocation estimate
+- growth tilt estimate
+- theme or sector exposure tags when full look-through data is unavailable
 
-```bash
-docker build -t stock-intelligence-copilot:local .
-```
+Heuristic values should be presented as approximate and non-advisory.
 
-Run:
+## Deployment Notes
 
-```bash
-docker run --rm -p 8080:8080 --env-file backend/.env stock-intelligence-copilot:local
-```
+The full stack can run locally or be deployed as separate frontend/backend surfaces.
 
-## GitHub Publication
+Frontend-only static deployment:
 
-Recommended steps:
+- GitHub Pages can host the static frontend export.
+- The backend must run separately, for example on Cloud Run.
+- `NEXT_PUBLIC_BACKEND_BASE_URL` must point to the deployed backend origin.
 
-```bash
-git init
-git add .
-git commit -m "Initial public release"
-git branch -M main
-git remote add origin <your-github-repo-url>
-git push -u origin main
-```
+Backend deployment:
 
-This repo includes a minimal CI workflow at `.github/workflows/ci.yml` that runs:
+- Cloud Run is the recommended backend deployment target.
+- Store secrets in a secret manager, not in Git.
+- Confirm CORS allows the deployed frontend origin.
 
-- backend tests
-- backend Ruff lint
-- frontend ESLint
-
-Before publishing, make sure you do not commit real secrets. This repo should use:
-
-- `.env.example`
-- `backend/.env.example`
-- local `backend/.env` only on your machine or in secret managers
-
-## Deployment
-
-### GitHub Pages for Frontend Only
-
-This repository contains the full stack in one repo, but GitHub Pages should be used only for the static frontend export. The backend must run separately on Google Cloud Run.
-
-The Pages workflow builds the frontend from `frontend/stock-ui` and publishes the generated `out/` directory. The expected Pages URL is:
-
-- `https://yuni-wyx.github.io/StockIntelligenceCopilot/`
-
-Before enabling the Pages workflow, add this repository variable in GitHub:
-
-- `NEXT_PUBLIC_BACKEND_BASE_URL=https://stock-intelligence-copilot-168709263927.us-central1.run.app`
-
-The frontend will call the backend through that Cloud Run URL.
-
-The frontend app always appends `/api` internally, so the actual explain endpoint used in production is:
-
-- `POST https://stock-intelligence-copilot-168709263927.us-central1.run.app/api/explain`
-
-The bare path below is not a valid frontend target:
-
-- `POST https://stock-intelligence-copilot-168709263927.us-central1.run.app/explain`
-
-### Google Cloud Run
-
-Cloud Run is the recommended deployment target for the backend.
-
-1. Authenticate and set your project:
-
-```bash
-gcloud auth login
-gcloud config set project <PROJECT_ID>
-```
-
-2. Enable required services:
-
-```bash
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
-```
-
-3. Build the container from the repo root:
-
-```bash
-gcloud builds submit --tag gcr.io/<PROJECT_ID>/stock-intelligence-copilot
-```
-
-4. Create secrets:
-
-```bash
-printf '%s' '<OPENAI_API_KEY>' | gcloud secrets create OPENAI_API_KEY --data-file=-
-printf '%s' '<ALPHA_VANTAGE_API_KEY>' | gcloud secrets create ALPHA_VANTAGE_API_KEY --data-file=-
-```
-
-5. Grant the runtime service account access:
-
-```bash
-gcloud projects add-iam-policy-binding <PROJECT_ID> \
-  --member="serviceAccount:<PROJECT_NUMBER>-compute@developer.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-```
-
-6. Deploy to Cloud Run:
-
-```bash
-gcloud run deploy stock-intelligence-copilot \
-  --image gcr.io/<PROJECT_ID>/stock-intelligence-copilot \
-  --platform managed \
-  --region <REGION> \
-  --allow-unauthenticated \
-  --set-env-vars BACKEND_CORS_ORIGINS=https://yuni-wyx.github.io,LANGCHAIN_TRACING_V2=false,LANGCHAIN_PROJECT=stock-copilot \
-  --update-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest,ALPHA_VANTAGE_API_KEY=ALPHA_VANTAGE_API_KEY:latest
-```
-
-You can also use the Makefile helper:
-
-```bash
-make cloudrun-deploy PROJECT_ID=<PROJECT_ID> REGION=<REGION> SERVICE=stock-intelligence-copilot
-```
-
-Optional LangSmith variables can be added later with:
-
-```bash
-printf '%s' '<LANGCHAIN_API_KEY>' | gcloud secrets create LANGCHAIN_API_KEY --data-file=-
-
-gcloud run services update stock-intelligence-copilot \
-  --region <REGION> \
-  --update-env-vars LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=stock-copilot \
-  --update-secrets LANGCHAIN_API_KEY=LANGCHAIN_API_KEY:latest
-```
-
-## Demo Screenshots
-
-Place screenshots in this section before publishing:
-
-- `docs/screenshots/home.png`
-- `docs/screenshots/copilot-research.png`
-- `docs/screenshots/copilot-explain.png`
-- `docs/screenshots/copilot-trade.png`
-
-Example placeholder:
-
-```md
-![Home Screen](docs/screenshots/home.png)
-```
+Do not add new cloud resources or paid services without approval.
 
 ## Troubleshooting
 
-### Missing environment variables
+Missing environment variables:
 
-Symptoms:
+- backend starts but provider-backed requests fail
+- synthesis or news paths may return fallback responses
+- check `backend/.env` and deployment secret settings
 
-- backend startup succeeds but requests fail
-- news or synthesis endpoints return fallback responses
+CORS issues:
 
-Check:
+- confirm backend runs on port `8000`
+- confirm frontend runs on port `3000`
+- set `BACKEND_CORS_ORIGINS` for deployed frontend origins
 
-- `backend/.env` exists
-- `OPENAI_API_KEY` is set
-- `ALPHA_VANTAGE_API_KEY` is set
-- `NEXT_PUBLIC_BACKEND_BASE_URL` is set for any deployed frontend build
+Streaming fallback:
 
-### CORS issues
+- some proxies buffer SSE
+- if streaming is blocked, the frontend may fall back to a standard response
+- cancellation should still clean up stream readers and backend generators
 
-Symptoms:
+Local frontend memory:
 
-- frontend cannot call the backend from `localhost:3000`
-
-Check:
-
-- backend is running on port `8000`
-- frontend is running on port `3000`
-- `BACKEND_CORS_ORIGINS` includes your deployed frontend origin if you deploy beyond local development
-- for GitHub Pages, set `BACKEND_CORS_ORIGINS=https://yuni-wyx.github.io`
-
-### Streaming fallback
-
-Symptoms:
-
-- timeline does not stream live
-- UI still returns a final answer through fallback mode
-
-This is expected when:
-
-- SSE is blocked by the environment
-- a proxy buffers the response
-- the streaming endpoint errors and the UI falls back to standard JSON
-
-### Cloud Run startup problems
-
-Symptoms:
-
-- container fails health checks
-- service does not become ready
-
-Check:
-
-- the service listens on `$PORT` (the root `Dockerfile` does)
-- required env vars are configured in Cloud Run
-- the image was built from the repo root, not the frontend subdirectory
-- logs via:
-
-```bash
-gcloud run services logs read stock-intelligence-copilot --region <REGION>
-```
+- avoid opening localhost first
+- use curl-first checks
+- keep React Compiler disabled for local memory testing
+- use webpack dev mode instead of Turbopack unless explicitly testing Turbopack
 
 ## Roadmap
 
-- Add authenticated user accounts and saved portfolios
-- Improve provider redundancy for market data and news
-- Add end-to-end deployment checks for GitHub Pages plus Cloud Run
+Near-term roadmap:
+
+- **Week 1: Wealth Studio refactor**
+  - improve holdings UX
+  - simplify portfolio insights
+  - strengthen bilingual labels and empty states
+
+- **Week 2: Portfolio Stress Test**
+  - add clearer stress scenarios
+  - show before/after exposure changes
+  - keep all stress output framed as hypothetical
+
+- **Week 3: Signal Engine**
+  - refine relative signals
+  - improve source metadata
+  - connect signals to evidence provenance
+
+- **Week 4: Portfolio Intelligence**
+  - improve concentration analysis
+  - improve sector exposure
+  - add risk attribution and watchlist monitoring hooks
+
+Future ML, embeddings, vector databases, model training, paid APIs, or new cloud resources should only be added after explicit approval.

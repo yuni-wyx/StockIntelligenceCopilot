@@ -25,6 +25,7 @@ class ToolName(str, Enum):
     FUNDAMENTALS = "fundamentals"
     NEWS = "news"
     EARNINGS = "earnings"
+    SIGNAL = "signal"
 
 
 class ToolCallSpec(BaseModel):

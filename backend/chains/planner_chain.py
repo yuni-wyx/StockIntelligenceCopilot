@@ -28,7 +28,7 @@ except ImportError:
 # ── Mode planners ─────────────────────────────────────────────────────────────
 
 def _plan_stock_research(intent: IntentOutput) -> ExecutionPlan:
-    """Full-depth research: fundamentals + news + earnings + price data."""
+    """Full-depth research: fundamentals + news + earnings + price data + signal."""
     ticker = intent.tickers[0]
     tool_calls: List[ToolCallSpec] = [
         ToolCallSpec(
@@ -51,6 +51,11 @@ def _plan_stock_research(intent: IntentOutput) -> ExecutionPlan:
             params={"include_history": True, "history_quarters": 4},
             rationale="Earnings cadence and surprise history feed into the bull/bear case.",
         ),
+        ToolCallSpec(
+            tool=ToolName.SIGNAL, ticker=ticker, priority=5,
+            params={"benchmark": "SPY", "horizon_days": 30},
+            rationale="Relative-strength signal adds deterministic benchmark context.",
+        ),
     ]
     return ExecutionPlan(
         mode=intent.mode,
@@ -69,7 +74,7 @@ def _plan_stock_research(intent: IntentOutput) -> ExecutionPlan:
 
 
 def _plan_price_movement(intent: IntentOutput) -> ExecutionPlan:
-    """Explain today's move: price data + news + earnings catalyst check."""
+    """Explain today's move: price data + news + earnings catalyst check + signal."""
     ticker = intent.tickers[0]
     tool_calls: List[ToolCallSpec] = [
         ToolCallSpec(
@@ -91,6 +96,11 @@ def _plan_price_movement(intent: IntentOutput) -> ExecutionPlan:
             tool=ToolName.FUNDAMENTALS, ticker=ticker, priority=4,
             params={"include_estimates": True, "include_segments": False},
             rationale="Valuation context helps assess if move is warranted.",
+        ),
+        ToolCallSpec(
+            tool=ToolName.SIGNAL, ticker=ticker, priority=5,
+            params={"benchmark": "SPY", "horizon_days": 30},
+            rationale="Relative benchmark signal provides deterministic trend context.",
         ),
     ]
     return ExecutionPlan(
