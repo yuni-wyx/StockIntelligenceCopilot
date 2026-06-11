@@ -174,6 +174,45 @@ export type PortfolioChatResponse = {
   safety_disclaimer: string;
 };
 
+export type PortfolioHoldingMonitor = {
+  ticker: string;
+  name?: string | null;
+  weight_pct?: number | null;
+  return_pct?: number | null;
+  signal_score?: number | null;
+  signal_band?: string | null;
+  signal_confidence?: string | null;
+  news_sentiment?: string | null;
+  next_earnings_date?: string | null;
+  days_to_next_earnings?: number | null;
+  watch_items: string[];
+  caveats: string[];
+};
+
+export type PortfolioMonitorResponse = {
+  generated_at: string;
+  workspace_id?: string | null;
+  portfolio_summary: string;
+  risk_flags: string[];
+  top_portfolio_alerts: string[];
+  holdings: PortfolioHoldingMonitor[];
+  safety_disclaimer: string;
+};
+
+export type PortfolioImportIssue = {
+  row_number: number;
+  message: string;
+};
+
+export type PortfolioImportPreviewResponse = {
+  holdings: HoldingInput[];
+  errors: PortfolioImportIssue[];
+  warnings: PortfolioImportIssue[];
+  detected_columns: string[];
+  imported_count: number;
+  total_rows: number;
+};
+
 export type InvestorProfile = {
   risk_tolerance?: string | null;
   investment_style?: string | null;
@@ -310,6 +349,66 @@ export async function askAboutPortfolio(payload: {
   });
   if (!res.ok) {
     const fallback = "Failed to get portfolio context response.";
+    try {
+      const data = (await res.json()) as { error?: string };
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      throw new Error(fallback);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(fallback);
+    }
+  }
+  return res.json();
+}
+
+export async function getPortfolioMonitor(payload: {
+  workspace_id?: string;
+  portfolio?: {
+    holdings: HoldingInput[];
+    risk_profile?: string;
+    goal?: string;
+    base_currency?: string;
+  };
+}): Promise<PortfolioMonitorResponse> {
+  const res = await fetch(buildApiUrl("/portfolio/monitor"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const fallback = "Failed to load portfolio monitor.";
+    try {
+      const data = (await res.json()) as { error?: string };
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      throw new Error(fallback);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(fallback);
+    }
+  }
+  return res.json();
+}
+
+export async function previewPortfolioImport(
+  file: File,
+): Promise<PortfolioImportPreviewResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(buildApiUrl("/portfolio/import/preview"), {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const fallback = "Failed to preview CSV import.";
     try {
       const data = (await res.json()) as { error?: string };
       if (data.error) {

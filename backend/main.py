@@ -5,7 +5,7 @@ import logging
 import sys
 from typing import Any, List
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -52,6 +52,9 @@ if __package__:
         ScenarioRequest,
     )
     from .schemas.portfolio_chat import PortfolioChatRequest
+    from .schemas.portfolio_monitor import PortfolioMonitorRequest
+    from .services.portfolio_importer import preview_portfolio_csv
+    from .services.portfolio_monitor import PortfolioMonitorService
     from .services.portfolio_store import PortfolioStore
     from .symbols import normalize_symbol
 else:
@@ -91,6 +94,9 @@ else:
         ScenarioRequest,
     )
     from schemas.portfolio_chat import PortfolioChatRequest
+    from schemas.portfolio_monitor import PortfolioMonitorRequest
+    from services.portfolio_importer import preview_portfolio_csv
+    from services.portfolio_monitor import PortfolioMonitorService
     from services.portfolio_store import PortfolioStore
     from symbols import normalize_symbol
 
@@ -257,6 +263,43 @@ def api_portfolio_chat(req: PortfolioChatRequest):
         return JSONResponse(
             status_code=500,
             content={"error": "Portfolio-aware chat failed."},
+        )
+
+
+@app.post("/api/portfolio/monitor")
+def api_portfolio_monitor(req: PortfolioMonitorRequest) -> dict:
+    service = PortfolioMonitorService(store=portfolio_store)
+    try:
+        response = service.generate(req)
+        return serialize_output(response)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+    except Exception:
+        logger.exception("Portfolio monitoring generation failed")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Portfolio monitoring failed."},
+        )
+
+
+@app.post("/api/portfolio/import/preview")
+async def api_portfolio_import_preview(file: UploadFile = File(...)) -> dict:
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Please upload a CSV file."},
+        )
+    try:
+        content = await file.read()
+        preview = preview_portfolio_csv(content)
+        return serialize_output(preview)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+    except Exception:
+        logger.exception("Portfolio CSV preview failed")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Portfolio CSV preview failed."},
         )
 
 

@@ -1,5 +1,7 @@
 import type { HoldingInput } from "@/lib/portfolioApi";
+import type { PortfolioImportPreviewResponse } from "@/lib/portfolioApi";
 import type { PortfolioAnalysisResponse } from "@/lib/portfolioApi";
+import type { PortfolioMonitorResponse } from "@/lib/portfolioApi";
 
 export type PortfolioHoldingContribution = {
   ticker: string;
@@ -162,11 +164,13 @@ export type HoldingValidationMessage = {
 
 export type WealthStudioOperation =
   | "analyze"
+  | "import_preview"
   | "save"
   | "load"
   | "scenario"
   | "compare"
-  | "coach";
+  | "coach"
+  | "monitor";
 
 export type HoldingsValidationState = {
   messages: HoldingValidationMessage[];
@@ -178,3 +182,20 @@ export type PortfolioChatQuestionChip = {
   id: string;
   label: string;
 };
+
+export type PortfolioImportPreview = PortfolioImportPreviewResponse;
+
+export type PortfolioImportOnboardingSummary = {
+  fileName?: string | null;
+  importedCount: number;
+  totalPositions: number;
+  detectedMarkets: string[];
+  warningsCount: number;
+  largestHoldingLabel: string;
+  largestHoldingValue?: number;
+  concentrationWarning?: string;
+  missingDataWarning?: string;
+  dividendDataAvailability: string;
+};
+
+export type PortfolioMonitorData = PortfolioMonitorResponse;

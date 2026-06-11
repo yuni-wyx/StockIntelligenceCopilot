@@ -26,6 +26,8 @@ class RouteMapTest(unittest.TestCase):
             ("POST", "/api/portfolio/scenarios/compare"),
             ("POST", "/api/portfolio/agent"),
             ("POST", "/api/portfolio/chat"),
+            ("POST", "/api/portfolio/monitor"),
+            ("POST", "/api/portfolio/import/preview"),
             ("POST", "/api/portfolio/save"),
             ("GET", "/api/portfolio/current"),
             ("PUT", "/api/portfolio/current"),

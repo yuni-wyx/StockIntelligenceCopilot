@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { PortfolioCoachPanel } from "@/components/wealth-studio/PortfolioCoachPanel";
 import { PortfolioHoldingsEditor } from "@/components/wealth-studio/PortfolioHoldingsEditor";
+import { PortfolioMonitorPanel } from "@/components/wealth-studio/PortfolioMonitorPanel";
 import { PortfolioSnapshotPanel } from "@/components/wealth-studio/PortfolioSnapshotPanel";
 import { PortfolioScenarioPanel } from "@/components/wealth-studio/PortfolioScenarioPanel";
 import { SavedWorkspacesPanel } from "@/components/wealth-studio/SavedWorkspacesPanel";
@@ -21,6 +22,7 @@ import { runPortfolioStressTest } from "@/components/wealth-studio/stressTest";
 import {
   calculateEditableHoldingMetrics,
   normalizeHoldings,
+  parseOptionalNumber,
   toEditableHolding,
 } from "@/components/wealth-studio/transforms";
 import {
@@ -46,16 +48,20 @@ import {
   comparePortfolioScenarios,
   listSavedPortfolios,
   loadCurrentPortfolio,
+  previewPortfolioImport,
+  getPortfolioMonitor,
   runPortfolioScenario,
   savePortfolio,
   type HoldingInput,
+  type PortfolioImportPreviewResponse,
   type PortfolioAnalysisResponse,
   type PortfolioChatResponse,
+  type PortfolioMonitorResponse,
   type ScenarioComparisonResponse,
   type ScenarioResponse,
 } from "@/lib/portfolioApi";
 import { appendHolding } from "@/lib/portfolioState";
-import { normalizeTicker } from "@/lib/tickerMap";
+import { detectTickerMarket, normalizeTicker, tickerDisplayName } from "@/lib/tickerMap";
 
 export default function PortfolioPage() {
   const { t, locale } = useLanguage();
@@ -86,6 +92,12 @@ export default function PortfolioPage() {
   const [scenario, setScenario] = useState<ScenarioResponse | null>(null);
   const [portfolioChatResponse, setPortfolioChatResponse] =
     useState<PortfolioChatResponse | null>(null);
+  const [portfolioMonitorResponse, setPortfolioMonitorResponse] =
+    useState<PortfolioMonitorResponse | null>(null);
+  const [importPreview, setImportPreview] = useState<PortfolioImportPreviewResponse | null>(null);
+  const [importFileName, setImportFileName] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [monitorError, setMonitorError] = useState<string | null>(null);
   const [savedPortfolios, setSavedPortfolios] = useState<Array<Record<string, unknown>>>([]);
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
   const [compareJson, setCompareJson] = useState(DEFAULT_COMPARE_JSON);
@@ -122,6 +134,68 @@ export default function PortfolioPage() {
     ],
     [ws],
   );
+  const importOnboardingSummary = useMemo(() => {
+    if (!importFileName || normalizedHoldings.length === 0) {
+      return null;
+    }
+
+    const holdingsWithValue = holdings.map((holding) => {
+      const derived = calculateEditableHoldingMetrics(holding);
+      return {
+        holding,
+        currentValue:
+          derived.currentValue ??
+          parseOptionalNumber(holding.current_value) ??
+          0,
+      };
+    });
+    const largest = [...holdingsWithValue].sort(
+      (left, right) => right.currentValue - left.currentValue,
+    )[0];
+    const totalValue = holdingsWithValue.reduce(
+      (sum, item) => sum + item.currentValue,
+      0,
+    );
+    const largestWeight =
+      totalValue > 0 && largest ? (largest.currentValue / totalValue) * 100 : 0;
+    const missingPriceOrValue = holdings.some((holding) => {
+      const currentPrice = parseOptionalNumber(holding.current_price);
+      const currentValue = parseOptionalNumber(holding.current_value);
+      return currentPrice === undefined && currentValue === undefined;
+    });
+    const detectedMarkets = Array.from(
+      new Set(
+        normalizedHoldings
+          .map((holding) => detectTickerMarket(holding.ticker))
+          .filter(Boolean),
+      ),
+    );
+
+    return {
+      fileName: importFileName,
+      importedCount: normalizedHoldings.length,
+      totalPositions: normalizedHoldings.length,
+      detectedMarkets,
+      warningsCount: importPreview?.warnings.length ?? 0,
+      largestHoldingLabel: largest
+        ? tickerDisplayName(largest.holding.ticker || largest.holding.name || "")
+        : ws.noHoldingsTitle,
+      largestHoldingValue: largest?.currentValue,
+      concentrationWarning:
+        largestWeight >= 25 ? ws.importConcentrationWarning : undefined,
+      missingDataWarning:
+        missingPriceOrValue || (importPreview?.warnings.length ?? 0) > 0
+          ? ws.importMissingDataWarning
+          : undefined,
+      dividendDataAvailability: ws.importDividendAvailability,
+    };
+  }, [holdings, importFileName, importPreview, normalizedHoldings, ws]);
+  const topReviewItem = analysis?.portfolio_intelligence?.suggested_review_items?.[0]
+    ? `${ws.review}: ${analysis.portfolio_intelligence.suggested_review_items[0].title}`
+    : null;
+  const topConcentrationFlag = analysis?.portfolio_intelligence?.concentration?.flags?.[0]
+    ? `${ws.concentrationAnalysis}: ${analysis.portfolio_intelligence.concentration.flags[0]}`
+    : null;
 
   const holdingsValidation = useMemo(
     () =>
@@ -139,6 +213,17 @@ export default function PortfolioPage() {
 
   function currentPortfolioPayload() {
     return createPortfolioPayload(normalizedHoldings, riskProfile, goal);
+  }
+
+  function resetDerivedViews() {
+    setAnalysis(null);
+    setScenario(null);
+    setComparison(null);
+    setStressTestResult(null);
+    setPortfolioChatResponse(null);
+    setPortfolioMonitorResponse(null);
+    setInsightsError(null);
+    setMonitorError(null);
   }
 
   function updateHolding(index: number, field: keyof EditableHolding, value: string) {
@@ -261,6 +346,7 @@ export default function PortfolioPage() {
       setHoldings((record.portfolio.holdings ?? []).map((holding: HoldingInput) => toEditableHolding(holding)));
       setRiskProfile(record.portfolio.risk_profile ?? "Balanced");
       setGoal(record.portfolio.goal ?? "");
+      resetDerivedViews();
       setCurrentWorkspaceId("current");
       const listed = await listSavedPortfolios();
       setSavedPortfolios(listed.portfolios);
@@ -363,6 +449,83 @@ export default function PortfolioPage() {
     }
   }
 
+  async function handlePortfolioMonitor() {
+    const hasDirectPortfolio = normalizedHoldings.length > 0;
+    const workspaceId = hasDirectPortfolio ? undefined : currentWorkspaceId;
+
+    if (!hasDirectPortfolio && !workspaceId) {
+      setMonitorError(ws.portfolioMonitorAddHoldingsFirst);
+      return;
+    }
+
+    setLoading(true);
+    setActiveOperation("monitor");
+    setError(null);
+    setMonitorError(null);
+    try {
+      const response = await getPortfolioMonitor({
+        portfolio: hasDirectPortfolio ? currentPortfolioPayload() : undefined,
+        workspace_id: workspaceId || undefined,
+      });
+      setPortfolioMonitorResponse(response);
+    } catch (err) {
+      setMonitorError(err instanceof Error ? err.message : ws.portfolioMonitorAddHoldingsFirst);
+    } finally {
+      setLoading(false);
+      setActiveOperation(null);
+    }
+  }
+
+  async function handlePreviewImportFile(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    setLoading(true);
+    setActiveOperation("import_preview");
+    setError(null);
+    setImportError(null);
+    try {
+      const preview = await previewPortfolioImport(file);
+      setImportPreview(preview);
+      setImportFileName(file.name);
+      if (preview.imported_count === 0) {
+        setImportError(ws.csvNoValidRows);
+      }
+    } catch (err) {
+      setImportPreview(null);
+      setImportFileName(file.name);
+      setImportError(err instanceof Error ? err.message : ws.csvImportFailed);
+    } finally {
+      setLoading(false);
+      setActiveOperation(null);
+    }
+  }
+
+  function handleApplyImportPreview() {
+    if (!importPreview || importPreview.holdings.length === 0) {
+      setImportError(ws.csvNoValidRows);
+      return;
+    }
+
+    setHoldings(
+      importPreview.holdings.map((holding, index) =>
+        toEditableHolding(holding, `holding-import-${index}`),
+      ),
+    );
+    resetDerivedViews();
+    setCurrentWorkspaceId(null);
+    setImportPreview(null);
+    setImportFileName(null);
+    setImportError(null);
+  }
+
+  function handleImportCoachShortcut() {
+    const question = ws.portfolioChatStarterReview;
+    setAgentQuestion(question);
+    void handleAskAgent(question);
+  }
+
   function handleRunStressTest() {
     const { result, error: validationError } = runPortfolioStressTest(holdings, stressTestForm, {
       stressTestNoValidHoldings: ws.stressTestNoValidHoldings,
@@ -408,8 +571,19 @@ export default function PortfolioPage() {
           onAnalyze={handleAnalyze}
           onSave={handleSave}
           onLoad={handleLoad}
+          onPreviewImportFile={(file) => void handlePreviewImportFile(file)}
+          onApplyImportPreview={handleApplyImportPreview}
+          onRunImportAnalyze={() => void handleAnalyze()}
+          onRunImportCoach={handleImportCoachShortcut}
+          onRunImportStressTest={handleRunStressTest}
           calculateHoldingMetrics={calculateEditableHoldingMetrics}
           holdingInputClass={holdingInputClass}
+          importPreview={importPreview}
+          importFileName={importFileName}
+          importError={importError}
+          importOnboardingSummary={importOnboardingSummary}
+          topReviewItem={topReviewItem}
+          topConcentrationFlag={topConcentrationFlag}
         />
 
         {error ? (
@@ -428,16 +602,26 @@ export default function PortfolioPage() {
 
         <SectionIntro title={ws.ideasSection} helper={ws.ideasSectionHelper} />
         <div className="grid gap-6 xl:grid-cols-[1fr_0.95fr]">
-          <PortfolioCoachPanel
-            copy={ws}
-            loading={loading}
-            question={agentQuestion}
-            onQuestionChange={setAgentQuestion}
-            onAsk={() => void handleAskAgent()}
-            onAskQuestion={(value) => void handleAskAgent(value)}
-            response={portfolioChatResponse}
-            starterQuestions={portfolioQuestionChips}
-          />
+          <div className="space-y-6">
+            <PortfolioCoachPanel
+              copy={ws}
+              loading={loading}
+              question={agentQuestion}
+              onQuestionChange={setAgentQuestion}
+              onAsk={() => void handleAskAgent()}
+              onAskQuestion={(value) => void handleAskAgent(value)}
+              response={portfolioChatResponse}
+              starterQuestions={portfolioQuestionChips}
+            />
+            <PortfolioMonitorPanel
+              copy={ws}
+              loading={loading && activeOperation === "monitor"}
+              canRun={normalizedHoldings.length > 0 || Boolean(currentWorkspaceId)}
+              errorMessage={monitorError}
+              response={portfolioMonitorResponse}
+              onCheck={() => void handlePortfolioMonitor()}
+            />
+          </div>
           <div className="space-y-6">
             <SavedWorkspacesPanel copy={ws} savedPortfolios={savedPortfolios} />
             <PortfolioScenarioPanel

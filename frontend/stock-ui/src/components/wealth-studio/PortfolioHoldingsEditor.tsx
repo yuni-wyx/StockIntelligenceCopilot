@@ -11,6 +11,8 @@ import {
 import type {
   EditableHolding,
   HoldingDerivedMetrics,
+  PortfolioImportPreview,
+  PortfolioImportOnboardingSummary,
   HoldingValidationField,
   HoldingsValidationState,
 } from "./types";
@@ -30,8 +32,19 @@ type Props = {
   onAnalyze: () => void;
   onSave: () => void;
   onLoad: () => void;
+  onPreviewImportFile: (file: File | null) => void;
+  onApplyImportPreview: () => void;
+  onRunImportAnalyze: () => void;
+  onRunImportCoach: () => void;
+  onRunImportStressTest: () => void;
   calculateHoldingMetrics: (holding: EditableHolding) => HoldingDerivedMetrics;
   holdingInputClass: (index: number, field: HoldingValidationField) => string;
+  importPreview: PortfolioImportPreview | null;
+  importFileName: string | null;
+  importError: string | null;
+  importOnboardingSummary: PortfolioImportOnboardingSummary | null;
+  topReviewItem?: string | null;
+  topConcentrationFlag?: string | null;
 };
 
 export function PortfolioHoldingsEditor({
@@ -49,8 +62,19 @@ export function PortfolioHoldingsEditor({
   onAnalyze,
   onSave,
   onLoad,
+  onPreviewImportFile,
+  onApplyImportPreview,
+  onRunImportAnalyze,
+  onRunImportCoach,
+  onRunImportStressTest,
   calculateHoldingMetrics,
   holdingInputClass,
+  importPreview,
+  importFileName,
+  importError,
+  importOnboardingSummary,
+  topReviewItem,
+  topConcentrationFlag,
 }: Props) {
   return (
     <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-5 shadow-2xl shadow-black/20">
@@ -82,6 +106,222 @@ export function PortfolioHoldingsEditor({
               </li>
             ))}
           </ul>
+        </div>
+      ) : null}
+
+      <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-zinc-100">{copy.csvImportTitle}</h3>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-400">
+              {copy.csvImportHelper}
+            </p>
+          </div>
+          <label className="cursor-pointer rounded-xl border border-dashed border-white/15 bg-black/20 px-4 py-3 text-sm text-zinc-200 transition hover:border-white/25 hover:bg-black/30">
+            <span className="font-medium">{copy.csvSelectFile}</span>
+            <span className="mt-1 block text-xs leading-5 text-zinc-500">{copy.csvDropHint}</span>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(event) => onPreviewImportFile(event.target.files?.[0] ?? null)}
+            />
+          </label>
+        </div>
+
+        {importError ? (
+          <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
+            {importError}
+          </div>
+        ) : null}
+
+        {importPreview ? (
+          <div className="mt-4 space-y-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-zinc-100">{copy.csvPreviewTitle}</div>
+                <p className="mt-1 text-sm leading-6 text-zinc-400">
+                  {importFileName ? `${importFileName} · ` : ""}
+                  {copy.csvImportReplaces}
+                </p>
+              </div>
+              <button
+                onClick={onApplyImportPreview}
+                disabled={loading || importPreview.imported_count === 0}
+                className="w-full rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50 lg:w-auto"
+              >
+                {copy.csvApplyImport}
+              </button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MiniMetric label={copy.csvImportedCount} value={importPreview.imported_count} />
+              <MiniMetric label={copy.csvTotalRows} value={importPreview.total_rows} />
+              <MiniMetric label={copy.csvErrorCount} value={importPreview.errors.length} />
+              <MiniMetric label={copy.csvWarningCount} value={importPreview.warnings.length} />
+            </div>
+
+            {importPreview.detected_columns.length > 0 ? (
+              <div>
+                <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">
+                  {copy.csvDetectedColumns}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {importPreview.detected_columns.map((column) => (
+                    <span
+                      key={column}
+                      className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-zinc-300"
+                    >
+                      {column}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {importPreview.holdings.length > 0 ? (
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">
+                  {copy.csvPreviewRows}
+                </div>
+                <div className="space-y-2">
+                  {importPreview.holdings.slice(0, 5).map((holding, index) => (
+                    <div
+                      key={`${holding.ticker}-${index}`}
+                      className="flex flex-col gap-1 rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-zinc-300 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium text-zinc-100">
+                          {normalizeTicker(holding.ticker)}
+                          {holding.name ? ` · ${holding.name}` : ""}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          {copy.shares}: {holding.shares ?? "—"} · {copy.currentPrice}:{" "}
+                          {holding.current_price ?? "—"} · {copy.avgCost}: {holding.avg_cost ?? "—"}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {importPreview.errors.length > 0 ? (
+              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-4">
+                <div className="text-sm font-semibold text-rose-200">{copy.csvImportErrors}</div>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-rose-100/90">
+                  {importPreview.errors.map((item) => (
+                    <li key={`error-${item.row_number}-${item.message}`}>
+                      {copy.rowLabel} {item.row_number}: {item.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {importPreview.warnings.length > 0 ? (
+              <div className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-4">
+                <div className="text-sm font-semibold text-amber-100">{copy.csvImportWarnings}</div>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-50/90">
+                  {importPreview.warnings.map((item) => (
+                    <li key={`warning-${item.row_number}-${item.message}`}>
+                      {copy.rowLabel} {item.row_number}: {item.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {importOnboardingSummary ? (
+        <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-zinc-100">
+                {copy.importOnboardingTitle}
+              </h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-400">
+                {copy.importOnboardingHelper}
+              </p>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+              {importOnboardingSummary.fileName || copy.csvImportTitle}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MiniMetric
+              label={copy.csvImportedCount}
+              value={importOnboardingSummary.importedCount}
+            />
+            <MiniMetric
+              label={copy.importTotalPositions}
+              value={importOnboardingSummary.totalPositions}
+            />
+            <MiniMetric
+              label={copy.csvWarningCount}
+              value={importOnboardingSummary.warningsCount}
+            />
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="text-xs text-zinc-500">{copy.importDetectedMarkets}</div>
+              <div className="mt-2 text-sm font-medium text-zinc-100">
+                {importOnboardingSummary.detectedMarkets.join(", ") || copy.noExposure}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="text-sm font-semibold text-zinc-100">{copy.importOnboardingInsights}</div>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-300">
+                <li>
+                  {copy.importLargestHolding}: {importOnboardingSummary.largestHoldingLabel}
+                  {importOnboardingSummary.largestHoldingValue !== undefined
+                    ? ` (${importOnboardingSummary.largestHoldingValue.toFixed(2)})`
+                    : ""}
+                </li>
+                {importOnboardingSummary.concentrationWarning ? (
+                  <li>{importOnboardingSummary.concentrationWarning}</li>
+                ) : null}
+                {importOnboardingSummary.missingDataWarning ? (
+                  <li>{importOnboardingSummary.missingDataWarning}</li>
+                ) : null}
+                <li>{importOnboardingSummary.dividendDataAvailability}</li>
+                {topReviewItem ? <li>{topReviewItem}</li> : null}
+                {topConcentrationFlag ? <li>{topConcentrationFlag}</li> : null}
+              </ul>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="text-sm font-semibold text-zinc-100">{copy.importNextActions}</div>
+              <p className="mt-2 text-sm leading-6 text-zinc-400">{copy.importNextActionsHelper}</p>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <button
+                  onClick={onRunImportAnalyze}
+                  disabled={loading}
+                  className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50"
+                >
+                  {copy.analyzeHoldings}
+                </button>
+                <button
+                  onClick={onRunImportCoach}
+                  disabled={loading}
+                  className="rounded-xl border border-white/10 bg-black/20 px-4 py-2.5 text-sm text-zinc-200 transition hover:border-white/20 disabled:opacity-50"
+                >
+                  {copy.askAboutMyPortfolio}
+                </button>
+                <button
+                  onClick={onRunImportStressTest}
+                  disabled={loading}
+                  className="rounded-xl border border-white/10 bg-black/20 px-4 py-2.5 text-sm text-zinc-200 transition hover:border-white/20 disabled:opacity-50"
+                >
+                  {copy.runStressTest}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 

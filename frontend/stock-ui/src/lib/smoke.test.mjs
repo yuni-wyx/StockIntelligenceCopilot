@@ -12,25 +12,36 @@ test("portfolio page coordinates wealth studio sections and extracted components
   const snapshotPanel = read("src/components/wealth-studio/PortfolioSnapshotPanel.tsx");
   const snapshotSections = read("src/components/wealth-studio/PortfolioSnapshotSections.tsx");
   const coachPanel = read("src/components/wealth-studio/PortfolioCoachPanel.tsx");
+  const monitorPanel = read("src/components/wealth-studio/PortfolioMonitorPanel.tsx");
   const stressTestPanel = read("src/components/wealth-studio/PortfolioStressTestSection.tsx");
   const messages = read("src/i18n/messages.tsx");
   assert.match(source, /PortfolioHoldingsEditor/);
   assert.match(source, /PortfolioSnapshotPanel/);
   assert.match(source, /PortfolioCoachPanel/);
+  assert.match(source, /PortfolioMonitorPanel/);
   assert.match(source, /SavedWorkspacesPanel/);
   assert.match(source, /PortfolioScenarioPanel/);
   assert.match(source, /runPortfolioStressTest/);
+  assert.match(source, /previewPortfolioImport/);
   assert.match(holdingsEditor, /addHolding/);
+  assert.match(holdingsEditor, /csvImportTitle/);
+  assert.match(holdingsEditor, /csvApplyImport/);
+  assert.match(holdingsEditor, /importOnboardingTitle/);
+  assert.match(holdingsEditor, /importNextActions/);
   assert.match(holdingsEditor, /saveWorkspace/);
   assert.match(holdingsEditor, /loadSaved/);
   assert.match(snapshotPanel, /SnapshotOverview/);
   assert.match(snapshotSections, /overallHealth/);
   assert.match(coachPanel, /askAboutMyPortfolio/);
+  assert.match(monitorPanel, /portfolioMonitorTopAlerts/);
+  assert.match(monitorPanel, /portfolioMonitorSourceSignal/);
   assert.match(stressTestPanel, /runStressTest/);
   assert.match(source, /addHolding/);
   assert.match(messages, /Portfolio Snapshot/);
   assert.match(messages, /Portfolio Stress Test/);
   assert.match(messages, /Ask About My Portfolio/);
+  assert.match(messages, /Portfolio Monitor/);
+  assert.match(messages, /Import Summary and Next Review/);
 });
 
 test("api base source builds urls under /api and requires deployed env config", () => {
@@ -40,6 +51,8 @@ test("api base source builds urls under /api and requires deployed env config", 
   assert.match(source, /http:\/\/localhost:8000/);
   assert.match(source, /\/api\$\{path\}/);
   assert.match(portfolioApi, /\/portfolio\/chat/);
+  assert.match(portfolioApi, /\/portfolio\/monitor/);
+  assert.match(portfolioApi, /\/portfolio\/import\/preview/);
 });
 
 test("research mode still exists in copilot source", () => {

@@ -77,6 +77,42 @@ export const messages = {
       holdingsHelper:
         "Add the positions you want to analyze. Ticker and positive shares are required; other fields can stay blank if you do not know them.",
       addHolding: "Add Holding",
+      csvImportTitle: "Import Holdings from CSV",
+      csvImportHelper:
+        "Upload a simple CSV with columns like ticker, shares, avg cost, or current price. Preview first, then replace the current editor rows in one step.",
+      csvSelectFile: "Choose CSV",
+      csvDropHint: "Drag a CSV here or click to choose one.",
+      csvPreviewTitle: "CSV Import Preview",
+      csvImportReplaces:
+        "Importing will replace the current Wealth Studio holdings editor rows.",
+      csvImportedCount: "Valid Rows",
+      csvTotalRows: "CSV Rows",
+      csvErrorCount: "Errors",
+      csvWarningCount: "Warnings",
+      csvDetectedColumns: "Detected Columns",
+      csvPreviewRows: "Preview Holdings",
+      csvApplyImport: "Import into Current Holdings",
+      csvImportErrors: "Rows to fix",
+      csvImportWarnings: "Rows to review",
+      csvNoValidRows: "No valid holding rows were found in this CSV preview.",
+      csvImportFailed: "Failed to preview CSV import.",
+      rowLabel: "Row",
+      importOnboardingTitle: "Import Summary and Next Review",
+      importOnboardingHelper:
+        "Use this quick summary to review what was imported and choose the next portfolio check.",
+      importTotalPositions: "Total Positions",
+      importDetectedMarkets: "Detected Markets",
+      importOnboardingInsights: "Onboarding Insights",
+      importLargestHolding: "Largest holding to review",
+      importNextActions: "Next Actions",
+      importNextActionsHelper:
+        "A quick path is: review the imported rows, run analysis, then monitor concentration or scenario risk.",
+      importConcentrationWarning:
+        "Concentration may deserve review because one imported holding appears to dominate the current value mix.",
+      importMissingDataWarning:
+        "Some imported rows are missing price or value fields, so later estimates may need manual review.",
+      importDividendAvailability:
+        "Dividend data is not included in this CSV import, so income views remain estimates until analysis fills more context.",
       noHoldingsTitle: "No holdings yet",
       noHoldingsBody:
         "Add a holding to start. You only need a ticker, positive shares, and any price or cost details you know.",
@@ -270,6 +306,31 @@ export const messages = {
       portfolioChatStarterReview: "Which holdings should I review first?",
       portfolioChatStarterIncome: "How stable is my dividend income?",
       portfolioChatStarterTech: "What should I monitor if tech stocks fall?",
+      portfolioMonitorTitle: "Portfolio Monitor",
+      portfolioMonitorHelper:
+        "Use your saved/current holdings to surface news, earnings, signal, and concentration items worth monitoring.",
+      portfolioMonitorContextNote: "Uses current or saved workspace context",
+      portfolioMonitorCta: "Check What to Monitor",
+      portfolioMonitorEmptyTitle: "No portfolio monitor context yet",
+      portfolioMonitorEmptyBody:
+        "Add, import, or load holdings first so this panel can summarize what is worth monitoring.",
+      portfolioMonitorAddHoldingsFirst:
+        "Add or load holdings first so I can build portfolio monitoring from your current context.",
+      portfolioMonitorTopAlerts: "Top Portfolio Alerts",
+      portfolioMonitorNoAlerts: "No portfolio-wide monitoring alerts were triggered yet.",
+      portfolioMonitorWatchItems: "Watch Items",
+      portfolioMonitorNoWatchItems:
+        "No immediate watch items were generated for this holding.",
+      portfolioMonitorNoCaveats: "No caveats were surfaced for this holding.",
+      portfolioMonitorWorkspaceLabel: "Workspace",
+      portfolioMonitorNextEarnings: "Next earnings date",
+      portfolioMonitorDaysToEarnings: "Days to earnings",
+      portfolioMonitorEarningsUnavailable: "Upcoming earnings timing is not currently available.",
+      portfolioMonitorNewsTone: "News tone",
+      portfolioMonitorSourceSignal: "Signal",
+      portfolioMonitorSourceNews: "News",
+      portfolioMonitorSourceEarnings: "Earnings",
+      portfolioMonitorSourceConcentration: "Concentration",
       advancedScenarioTools: "Advanced scenario tools",
       advancedScenarioToolsHelper:
         "Optional planning tools for scenario simulation, comparison, and power-user JSON editing.",
@@ -474,6 +535,41 @@ export const messages = {
       holdingsHelper:
         "加入你想分析的部位。股票代號與正數股數為必填；其他欄位不知道可以先留空。",
       addHolding: "新增持股",
+      csvImportTitle: "從 CSV 匯入持股",
+      csvImportHelper:
+        "上傳簡單 CSV，欄位可包含 ticker、shares、avg cost、current price 等。先預覽，再一次取代目前編輯中的持股列。",
+      csvSelectFile: "選擇 CSV",
+      csvDropHint: "把 CSV 拖曳到這裡，或點一下選檔。",
+      csvPreviewTitle: "CSV 匯入預覽",
+      csvImportReplaces: "匯入後會取代目前 Wealth Studio 編輯器中的持股列。",
+      csvImportedCount: "有效列",
+      csvTotalRows: "CSV 列數",
+      csvErrorCount: "錯誤",
+      csvWarningCount: "提醒",
+      csvDetectedColumns: "偵測到的欄位",
+      csvPreviewRows: "預覽持股",
+      csvApplyImport: "匯入到目前持股",
+      csvImportErrors: "需要修正的列",
+      csvImportWarnings: "建議檢查的列",
+      csvNoValidRows: "這份 CSV 預覽裡沒有可匯入的有效持股列。",
+      csvImportFailed: "CSV 匯入預覽失敗。",
+      rowLabel: "第",
+      importOnboardingTitle: "匯入摘要與下一步檢查",
+      importOnboardingHelper:
+        "先快速檢視這次匯入的內容，再決定下一步要做哪一種投資組合檢查。",
+      importTotalPositions: "總持股數",
+      importDetectedMarkets: "偵測市場",
+      importOnboardingInsights: "匯入後檢查重點",
+      importLargestHolding: "優先檢視的最大持股",
+      importNextActions: "下一步操作",
+      importNextActionsHelper:
+        "建議順序是：先檢視匯入列，再跑分析，之後追蹤集中度或情境風險。",
+      importConcentrationWarning:
+        "其中一筆匯入持股看起來明顯偏大，建議先檢查集中度。",
+      importMissingDataWarning:
+        "部分匯入列缺少價格或現值欄位，之後的估算可能需要手動補資料。",
+      importDividendAvailability:
+        "這份 CSV 匯入本身不包含股息資料，因此收益相關內容仍會是估算值。",
       noHoldingsTitle: "還沒有持股",
       noHoldingsBody:
         "先新增一筆持股即可開始。你只需要股票代號、正數股數，以及你知道的價格或成本資料。",
@@ -658,6 +754,30 @@ export const messages = {
       portfolioChatStarterReview: "我應該先檢查哪些持股？",
       portfolioChatStarterIncome: "我的配息收入穩定嗎？",
       portfolioChatStarterTech: "如果科技股下跌，我該注意什麼？",
+      portfolioMonitorTitle: "投資組合追蹤",
+      portfolioMonitorHelper:
+        "使用目前或已儲存的持股，整理近期值得追蹤的新聞、財報、訊號與集中度事項。",
+      portfolioMonitorContextNote: "使用目前或已儲存的工作區脈絡",
+      portfolioMonitorCta: "檢查需要追蹤的事項",
+      portfolioMonitorEmptyTitle: "目前還沒有可追蹤的投資組合脈絡",
+      portfolioMonitorEmptyBody:
+        "請先新增、匯入或載入持股，這個面板才能整理值得追蹤的事項。",
+      portfolioMonitorAddHoldingsFirst:
+        "請先新增或載入持股，我才能用目前的投資組合脈絡建立追蹤摘要。",
+      portfolioMonitorTopAlerts: "投資組合重點追蹤",
+      portfolioMonitorNoAlerts: "目前尚未觸發整體投資組合層級的追蹤提醒。",
+      portfolioMonitorWatchItems: "持股追蹤事項",
+      portfolioMonitorNoWatchItems: "這檔持股目前沒有額外產生新的追蹤事項。",
+      portfolioMonitorNoCaveats: "這檔持股目前沒有額外注意事項。",
+      portfolioMonitorWorkspaceLabel: "工作區",
+      portfolioMonitorNextEarnings: "下次財報日期",
+      portfolioMonitorDaysToEarnings: "距離財報天數",
+      portfolioMonitorEarningsUnavailable: "目前無法取得即將到來的財報時間。",
+      portfolioMonitorNewsTone: "新聞語氣",
+      portfolioMonitorSourceSignal: "訊號",
+      portfolioMonitorSourceNews: "新聞",
+      portfolioMonitorSourceEarnings: "財報",
+      portfolioMonitorSourceConcentration: "集中度",
       advancedScenarioTools: "進階情境工具",
       advancedScenarioToolsHelper:
         "提供情境模擬、方案比較與進階 JSON 編輯，平常可先收起來。",
