@@ -15,6 +15,10 @@ ENABLE_LLM_TRADE_SYNTHESIS = os.getenv(
     "ENABLE_LLM_TRADE_SYNTHESIS",
     "",
 ).strip().lower() in {"1", "true", "yes", "on"}
+ENABLE_LLM_PORTFOLIO_CHAT = os.getenv(
+    "ENABLE_LLM_PORTFOLIO_CHAT",
+    "",
+).strip().lower() in {"1", "true", "yes", "on"}
 BACKEND_CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
@@ -27,6 +31,15 @@ BACKEND_CORS_ORIGINS = [
 
 def llm_trade_synthesis_enabled() -> bool:
     return os.getenv("ENABLE_LLM_TRADE_SYNTHESIS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def llm_portfolio_chat_enabled() -> bool:
+    return os.getenv("ENABLE_LLM_PORTFOLIO_CHAT", "").strip().lower() in {
         "1",
         "true",
         "yes",

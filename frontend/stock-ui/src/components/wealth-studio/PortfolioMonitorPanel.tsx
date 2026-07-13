@@ -134,7 +134,7 @@ export function PortfolioMonitorPanel({
                         ) : null}
                         {holding.signal_band ? (
                           <Badge tone={holding.signal_band === "Weak" ? "warning" : "neutral"}>
-                            {copy.signalBand}: {holding.signal_band}
+                            {copy.portfolioMonitorSignalBand}: {holding.signal_band}
                           </Badge>
                         ) : null}
                         {holding.news_sentiment ? (
@@ -172,7 +172,7 @@ export function PortfolioMonitorPanel({
                       {holding.days_to_next_earnings != null ? (
                         <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-zinc-300">
                           <div className="font-medium text-zinc-100">
-                            {copy.earnings}
+                            {copy.portfolioMonitorSourceEarnings}
                           </div>
                           <p className="mt-1 leading-6">
                             {holding.next_earnings_date

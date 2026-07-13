@@ -501,6 +501,16 @@ export async function updateCurrentPortfolio(payload: {
   return res.json();
 }
 
+export async function deleteCurrentPortfolio(): Promise<{ deleted: boolean }> {
+  const res = await fetch(buildApiUrl("/portfolio/current"), {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new Error("Failed to clear current portfolio.");
+  }
+  return res.json();
+}
+
 export async function listSavedPortfolios() {
   const res = await fetch(buildApiUrl("/portfolio/list"));
   if (!res.ok) {

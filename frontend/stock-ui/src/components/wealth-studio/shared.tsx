@@ -291,11 +291,35 @@ export function ListCard({
   );
 }
 
-export function InfoPanel({ title, body }: { title: string; body: string }) {
+export function InfoPanel({
+  title,
+  helper,
+  badge,
+  body,
+  children,
+}: {
+  title: string;
+  helper?: string;
+  badge?: ReactNode;
+  body?: string;
+  children?: ReactNode;
+}) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-      <h3 className="font-semibold">{title}</h3>
-      <p className="mt-3 text-sm leading-6 text-zinc-300">{body}</p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="font-semibold">{title}</h3>
+          {helper ? (
+            <p className="mt-1 text-sm leading-6 text-zinc-400">{helper}</p>
+          ) : null}
+        </div>
+        {badge}
+      </div>
+      {children ? (
+        <div className="mt-4">{children}</div>
+      ) : body ? (
+        <p className="mt-3 text-sm leading-6 text-zinc-300">{body}</p>
+      ) : null}
     </div>
   );
 }

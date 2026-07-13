@@ -19,6 +19,12 @@ export const TW_STOCK_MAP: Record<string, string> = {
   "00878.tw": "00878.TW",
   "00687b": "00687B.TW",
   "00687b.tw": "00687B.TW",
+  "2204": "2204.TW",
+  "2204.tw": "2204.TW",
+  "中華": "2204.TW",
+  "3548": "3548.TW",
+  "3548.tw": "3548.TW",
+  "兆利": "3548.TW",
 };
 
 export const TW_DISPLAY_NAMES: Record<string, string> = {
@@ -27,6 +33,8 @@ export const TW_DISPLAY_NAMES: Record<string, string> = {
   "2454.TW": "聯發科",
   "00878.TW": "國泰永續高股息",
   "00687B.TW": "國泰20年美債",
+  "2204.TW": "中華",
+  "3548.TW": "兆利",
 };
 
 export const US_DISPLAY_NAMES: Record<string, string> = {

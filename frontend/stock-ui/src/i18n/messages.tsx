@@ -57,6 +57,45 @@ export const messages = {
       eyebrow: "Wealth Studio",
       subtitle:
         "A calmer workspace for reviewing holdings, saving your local setup, asking portfolio questions, and testing reallocation ideas.",
+      portfolioCopilotTitle: "Portfolio Copilot",
+      portfolioCopilotSubtitle:
+        "Tell the assistant your holdings once, save them as portfolio memory, then ask follow-up questions with that context.",
+      portfolioCopilotGoal: "Demo portfolio review with saved holdings context",
+      portfolioMemoryStatus: "Portfolio Memory",
+      noPortfolioSavedYet: "No portfolio saved yet",
+      portfolioMemoryReady: "Portfolio memory is ready",
+      savedPortfolio: "Saved Portfolio",
+      tellMeAboutYourHoldings: "Tell me about your holdings",
+      portfolioOnboardingQuestion:
+        "Tell me about your holdings. Which stocks or ETFs do you own, how many shares do you hold, and what is your average cost?",
+      holdingsOnboardingPlaceholder:
+        "I own 00878 5000 shares at avg cost 20.5; TSLA 20 shares at avg cost 180...",
+      askAboutPortfolioPlaceholder:
+        "Ask about concentration, review priorities, income stability, or risk scenarios...",
+      continueCta: "Continue",
+      confirmHoldingsTitle: "Confirm portfolio memory",
+      holdingsParsedIntro: "I found these holdings:",
+      holdingsConfirmQuestion: "Should I save this as your current portfolio?",
+      savePortfolioMemory: "Save Portfolio",
+      editPortfolio: "Edit Portfolio",
+      replacePortfolio: "Replace Portfolio",
+      startOver: "Start Over",
+      compactControls: "Controls",
+      viewSavedHoldings: "View Saved Holdings",
+      lastUpdated: "Last updated",
+      starterPrompts: "Starter prompts",
+      portfolioMemoryLoadedMessage:
+        "Portfolio memory is loaded. You can ask about allocation, concentration, risk, income, or scenario thresholds.",
+      portfolioMemorySavedMessage:
+        "Saved. I can now use this portfolio memory for follow-up questions in this demo.",
+      holdingsParseFailed:
+        "I could not confidently extract holdings yet. Try one holding per line with ticker/name, shares, and average cost.",
+      holdingsParsePartialWarning:
+        "Some text could not be parsed, so please review the holdings before saving.",
+      portfolioChatFailedSafe:
+        "I could not complete that portfolio answer. The saved holdings are still available, so you can try a shorter question.",
+      educationalPortfolioReview:
+        "This is an educational portfolio review, not financial advice.",
       holdingsSection: "Holdings",
       analysisSection: "Analysis",
       ideasSection: "Ideas",
@@ -115,7 +154,7 @@ export const messages = {
         "Dividend data is not included in this CSV import, so income views remain estimates until analysis fills more context.",
       noHoldingsTitle: "No holdings yet",
       noHoldingsBody:
-        "Add a holding to start. You only need a ticker, positive shares, and any price or cost details you know.",
+        "Start by adding a holding or importing a broker CSV. You can also load a saved workspace.",
       holdingValidationTitle: "Check these holding details",
       holdingValidationHelper:
         "Common fixes: add a ticker, enter shares above 0, and keep cost or price at 0 or higher.",
@@ -285,11 +324,11 @@ export const messages = {
       askCoach: "Ask Portfolio Coach",
       askAboutMyPortfolio: "Ask About My Portfolio",
       portfolioChatHelper:
-        "I already know your current or saved holdings. Ask about allocation, concentration, risk, income, or scenario review.",
+        "Tell me what you own, then save the workspace so I can remember it next time. Ask about allocation, concentration, risk, income, or scenario review.",
       portfolioChatContextNote: "Uses current or saved workspace context",
       askAboutPortfolioCta: "Ask About My Portfolio",
       portfolioChatPlaceholder:
-        "Which holdings should I review first if my portfolio feels too concentrated?",
+        "I own 00878 2239 shares at 21.76, 2204.TW 500 shares at 84.56...",
       portfolioChatEvidenceUsed: "Context and evidence used",
       portfolioChatSuggestedFollowups: "Suggested follow-up questions",
       portfolioChatNoFollowups: "No follow-up questions available yet.",
@@ -323,6 +362,7 @@ export const messages = {
         "No immediate watch items were generated for this holding.",
       portfolioMonitorNoCaveats: "No caveats were surfaced for this holding.",
       portfolioMonitorWorkspaceLabel: "Workspace",
+      portfolioMonitorSignalBand: "Signal band",
       portfolioMonitorNextEarnings: "Next earnings date",
       portfolioMonitorDaysToEarnings: "Days to earnings",
       portfolioMonitorEarningsUnavailable: "Upcoming earnings timing is not currently available.",
@@ -519,6 +559,45 @@ export const messages = {
       eyebrow: "投資工作室",
       subtitle:
         "用比較輕鬆的方式檢視持股、儲存本機工作區、詢問投資組合問題，並測試調整情境。",
+      portfolioCopilotTitle: "投資組合助手",
+      portfolioCopilotSubtitle:
+        "先告訴助手你的持股，儲存成投資組合記憶，之後就能直接用這份脈絡追問。",
+      portfolioCopilotGoal: "使用已儲存持股脈絡進行 demo 投資組合檢視",
+      portfolioMemoryStatus: "投資組合記憶",
+      noPortfolioSavedYet: "尚未儲存投資組合",
+      portfolioMemoryReady: "已載入投資組合資料",
+      savedPortfolio: "已儲存的投資組合",
+      tellMeAboutYourHoldings: "告訴我你的持股",
+      portfolioOnboardingQuestion:
+        "告訴我你的持股。你目前持有哪些股票或 ETF？每一檔持有幾股？平均成本是多少？",
+      holdingsOnboardingPlaceholder:
+        "我有兆利 1000 股，成本 152；中華 2000 股，成本 91；00878 5000 股，成本 20.5。",
+      askAboutPortfolioPlaceholder:
+        "詢問集中度、優先檢查事項、收益穩定性或風險情境...",
+      continueCta: "繼續",
+      confirmHoldingsTitle: "確認投資組合記憶",
+      holdingsParsedIntro: "我整理到以下持股：",
+      holdingsConfirmQuestion: "是否儲存為目前投資組合？",
+      savePortfolioMemory: "儲存投資組合",
+      editPortfolio: "修改投資組合",
+      replacePortfolio: "重新建立投資組合",
+      startOver: "重新輸入",
+      compactControls: "控制項",
+      viewSavedHoldings: "查看已儲存持股",
+      lastUpdated: "最後更新",
+      starterPrompts: "快速提問",
+      portfolioMemoryLoadedMessage:
+        "已載入投資組合資料。你可以直接詢問配置、集中度、風險、收益或情境門檻。",
+      portfolioMemorySavedMessage:
+        "已儲存。這次 demo 接下來的問題，我會使用這份投資組合記憶回答。",
+      holdingsParseFailed:
+        "我還無法穩定整理這段持股。請用每行一檔，包含股票名稱或代號、股數、平均成本。",
+      holdingsParsePartialWarning:
+        "有部分文字沒有被解析，儲存前請先檢查整理出的持股。",
+      portfolioChatFailedSafe:
+        "這次沒有完成投資組合回答。已儲存的持股仍然可用，可以換一個較短的問題再試一次。",
+      educationalPortfolioReview:
+        "這是教育用途的投資組合檢視，不構成投資建議。",
       holdingsSection: "持股",
       analysisSection: "分析",
       ideasSection: "想法與下一步",
@@ -572,7 +651,7 @@ export const messages = {
         "這份 CSV 匯入本身不包含股息資料，因此收益相關內容仍會是估算值。",
       noHoldingsTitle: "還沒有持股",
       noHoldingsBody:
-        "先新增一筆持股即可開始。你只需要股票代號、正數股數，以及你知道的價格或成本資料。",
+        "先新增一筆持股，或匯入券商 CSV。你也可以載入已儲存的工作區。",
       holdingValidationTitle: "請檢查持股資料",
       holdingValidationHelper:
         "常見修正：補上股票代號、股數需大於 0，成本或現價不可為負數。",
@@ -733,11 +812,11 @@ export const messages = {
       askCoach: "詢問投資教練",
       askAboutMyPortfolio: "詢問我的投資組合",
       portfolioChatHelper:
-        "我已經會使用你目前或已儲存的持股脈絡。你可以直接問配置、集中度、風險、收益或情境檢查。",
+        "先告訴我你持有哪些股票，再把工作區儲存起來，這樣下次我就記得。你可以直接問配置、集中度、風險、收益或情境檢查。",
       portfolioChatContextNote: "會使用目前或已儲存工作區脈絡",
       askAboutPortfolioCta: "詢問我的投資組合",
       portfolioChatPlaceholder:
-        "如果我的投資組合看起來太集中，我應該先檢查哪些持股？",
+        "我有 00878 2239 股，均價 21.76，2204.TW 500 股，均價 84.56...",
       portfolioChatEvidenceUsed: "使用的脈絡與證據",
       portfolioChatSuggestedFollowups: "建議後續問題",
       portfolioChatNoFollowups: "目前沒有後續問題建議。",
@@ -770,6 +849,7 @@ export const messages = {
       portfolioMonitorNoWatchItems: "這檔持股目前沒有額外產生新的追蹤事項。",
       portfolioMonitorNoCaveats: "這檔持股目前沒有額外注意事項。",
       portfolioMonitorWorkspaceLabel: "工作區",
+      portfolioMonitorSignalBand: "訊號區間",
       portfolioMonitorNextEarnings: "下次財報日期",
       portfolioMonitorDaysToEarnings: "距離財報天數",
       portfolioMonitorEarningsUnavailable: "目前無法取得即將到來的財報時間。",

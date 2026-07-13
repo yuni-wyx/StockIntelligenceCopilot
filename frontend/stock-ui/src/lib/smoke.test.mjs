@@ -6,42 +6,50 @@ import test from "node:test";
 const read = (relativePath) =>
   fs.readFileSync(path.resolve(process.cwd(), relativePath), "utf8");
 
-test("portfolio page coordinates wealth studio sections and extracted components", () => {
+test("portfolio page renders chat-first portfolio MVP coordinator", () => {
   const source = read("src/app/portfolio/page.tsx");
-  const holdingsEditor = read("src/components/wealth-studio/PortfolioHoldingsEditor.tsx");
-  const snapshotPanel = read("src/components/wealth-studio/PortfolioSnapshotPanel.tsx");
-  const snapshotSections = read("src/components/wealth-studio/PortfolioSnapshotSections.tsx");
-  const coachPanel = read("src/components/wealth-studio/PortfolioCoachPanel.tsx");
-  const monitorPanel = read("src/components/wealth-studio/PortfolioMonitorPanel.tsx");
-  const stressTestPanel = read("src/components/wealth-studio/PortfolioStressTestSection.tsx");
+  const chatMvp = read("src/components/wealth-studio/PortfolioChatMvp.tsx");
+  const parser = read("src/components/wealth-studio/portfolioChatParser.ts");
   const messages = read("src/i18n/messages.tsx");
-  assert.match(source, /PortfolioHoldingsEditor/);
-  assert.match(source, /PortfolioSnapshotPanel/);
-  assert.match(source, /PortfolioCoachPanel/);
-  assert.match(source, /PortfolioMonitorPanel/);
-  assert.match(source, /SavedWorkspacesPanel/);
-  assert.match(source, /PortfolioScenarioPanel/);
-  assert.match(source, /runPortfolioStressTest/);
-  assert.match(source, /previewPortfolioImport/);
-  assert.match(holdingsEditor, /addHolding/);
-  assert.match(holdingsEditor, /csvImportTitle/);
-  assert.match(holdingsEditor, /csvApplyImport/);
-  assert.match(holdingsEditor, /importOnboardingTitle/);
-  assert.match(holdingsEditor, /importNextActions/);
-  assert.match(holdingsEditor, /saveWorkspace/);
-  assert.match(holdingsEditor, /loadSaved/);
-  assert.match(snapshotPanel, /SnapshotOverview/);
-  assert.match(snapshotSections, /overallHealth/);
-  assert.match(coachPanel, /askAboutMyPortfolio/);
-  assert.match(monitorPanel, /portfolioMonitorTopAlerts/);
-  assert.match(monitorPanel, /portfolioMonitorSourceSignal/);
-  assert.match(stressTestPanel, /runStressTest/);
-  assert.match(source, /addHolding/);
-  assert.match(messages, /Portfolio Snapshot/);
-  assert.match(messages, /Portfolio Stress Test/);
-  assert.match(messages, /Ask About My Portfolio/);
-  assert.match(messages, /Portfolio Monitor/);
-  assert.match(messages, /Import Summary and Next Review/);
+  assert.match(source, /PortfolioChatMvp/);
+  assert.match(source, /PortfolioChatLoadingShell/);
+  assert.match(source, /loadCurrentPortfolio/);
+  assert.match(source, /savePortfolio/);
+  assert.match(source, /askAboutPortfolio/);
+  assert.match(source, /parsePortfolioHoldingsText/);
+  assert.doesNotMatch(source, /PortfolioHoldingsEditor/);
+  assert.doesNotMatch(source, /PortfolioSnapshotPanel/);
+  assert.doesNotMatch(source, /PortfolioScenarioPanel/);
+  assert.doesNotMatch(source, /PortfolioMonitorPanel/);
+  assert.doesNotMatch(source, /holding-initial-00878/);
+  assert.match(chatMvp, /CONFIRM_HOLDINGS/);
+  assert.match(chatMvp, /LanguageToggle/);
+  assert.match(chatMvp, /\/copilot\?mode=research/);
+  assert.match(source, /PORTFOLIO_SAVED/);
+  assert.match(chatMvp, /Portfolio memory is ready|portfolioMemoryReady/);
+  assert.match(parser, /兆利/);
+  assert.match(parser, /中華/);
+  assert.match(parser, /我有\|我持有\|目前有\|另外有/);
+  assert.match(parser, /平均買在/);
+  assert.match(parser, /00878\.TW/);
+  assert.match(messages, /Portfolio Copilot/);
+  assert.match(messages, /投資組合助手/);
+  assert.match(messages, /This is an educational portfolio review/);
+  assert.match(messages, /這是教育用途的投資組合檢視/);
+});
+
+test("language provider defers persisted locale until after hydration", () => {
+  const context = read("src/context/LanguageContext.tsx");
+  const toggle = read("src/components/LanguageToggle.tsx");
+  const portfolioPage = read("src/app/portfolio/page.tsx");
+
+  assert.match(context, /useState<Locale>\("en"\)/);
+  assert.match(context, /useEffect/);
+  assert.match(context, /localStorage\.getItem\(STORAGE_KEY\)/);
+  assert.match(context, /hydrated/);
+  assert.match(portfolioPage, /if \(!hydrated\)/);
+  assert.match(toggle, /English/);
+  assert.match(toggle, /繁體中文/);
 });
 
 test("api base source builds urls under /api and requires deployed env config", () => {
