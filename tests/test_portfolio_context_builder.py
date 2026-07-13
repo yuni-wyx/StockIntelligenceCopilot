@@ -4,6 +4,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -11,6 +13,52 @@ if str(ROOT) not in sys.path:
 
 
 class PortfolioContextBuilderTest(unittest.TestCase):
+    def setUp(self) -> None:
+        from backend.services.portfolio_context_builder import PortfolioChatGeneration
+
+        self.llm_patcher = patch(
+            "backend.services.portfolio_context_builder._build_llm_answer",
+            return_value=PortfolioChatGeneration(
+                answer=None,
+                mode="deterministic",
+            ),
+        )
+        self.llm_patcher.start()
+        self.tool_patchers = [
+            patch(
+                "backend.services.portfolio_context_builder.fetch_market_data",
+                side_effect=lambda request: SimpleNamespace(
+                    ticker=request.ticker,
+                    market="TW" if request.ticker.endswith(".TW") else "US",
+                    current_price={
+                        "2204.TW": 91.0,
+                        "3548.TW": 165.0,
+                        "00878.TW": 22.5,
+                    }.get(request.ticker, 100.0),
+                    as_of="2026-07-13T00:00:00+00:00",
+                ),
+            ),
+            patch(
+                "backend.services.portfolio_context_builder.fetch_signal",
+                side_effect=RuntimeError("signal unavailable"),
+            ),
+            patch(
+                "backend.services.portfolio_context_builder.fetch_news",
+                side_effect=RuntimeError("news unavailable"),
+            ),
+            patch(
+                "backend.services.portfolio_context_builder.fetch_earnings",
+                side_effect=RuntimeError("earnings unavailable"),
+            ),
+        ]
+        for patcher in self.tool_patchers:
+            patcher.start()
+
+    def tearDown(self) -> None:
+        for patcher in self.tool_patchers:
+            patcher.stop()
+        self.llm_patcher.stop()
+
     def _portfolio_request(self):
         from backend.schemas.portfolio import HoldingInput, PortfolioRequest
 
@@ -207,6 +255,183 @@ class PortfolioContextBuilderTest(unittest.TestCase):
         self.assertNotIn("guaranteed", combined)
         self.assertNotIn("target price", combined)
         self.assertNotIn(" must ", f" {combined} ")
+
+    def test_saved_workspace_reload_preserves_all_three_demo_holdings(self) -> None:
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+        from backend.services.portfolio_store import PortfolioStore
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = PortfolioStore(Path(tmp_dir) / "portfolio.sqlite3")
+            store.save_portfolio(self._portfolio_request(), name="current")
+            loaded = store.load_portfolio("current")
+            self.assertIsNotNone(loaded)
+            assert loaded is not None
+            tickers = [holding.ticker for holding in loaded.portfolio.holdings]
+
+            builder = PortfolioContextBuilder(store=store)
+            context = builder.build_context(
+                PortfolioChatRequest(
+                    question="我目前有哪些持股？",
+                    workspace_id="current",
+                    language="zh",
+                )
+            )
+
+        self.assertEqual(tickers, ["00878.TW", "2204.TW", "3548.TW"])
+        self.assertEqual(len(context.holdings), 3)
+        self.assertEqual(
+            [holding.ticker for holding in context.holdings],
+            ["00878.TW", "2204.TW", "3548.TW"],
+        )
+
+    def test_leading_zero_ticker_remains_string_in_saved_workspace(self) -> None:
+        from backend.schemas.portfolio import HoldingInput, PortfolioRequest
+        from backend.services.portfolio_store import PortfolioStore
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = PortfolioStore(Path(tmp_dir) / "portfolio.sqlite3")
+            store.save_portfolio(
+                PortfolioRequest(
+                    holdings=[
+                        HoldingInput(
+                            ticker="00878.TW",
+                            shares=2239,
+                            avg_cost=21.76,
+                        )
+                    ]
+                ),
+                name="current",
+            )
+            loaded = store.load_portfolio("current")
+
+        self.assertIsNotNone(loaded)
+        assert loaded is not None
+        self.assertEqual(loaded.portfolio.holdings[0].ticker, "00878.TW")
+        self.assertIsInstance(loaded.portfolio.holdings[0].ticker, str)
+
+    def test_distinct_questions_route_to_distinct_intents(self) -> None:
+        from backend.services.portfolio_context_builder import classify_portfolio_chat_intent
+
+        questions = {
+            "我的投資組合是不是太集中？": "portfolio_concentration",
+            "兆利和中華怎麼配置？": "holding_comparison",
+            "如果科技股下跌，我該注意什麼？": "downside_scenario",
+            "我的配息穩定嗎？": "income_review",
+        }
+
+        self.assertEqual(
+            {question: classify_portfolio_chat_intent(question) for question in questions},
+            questions,
+        )
+
+    def test_distinct_intents_produce_materially_different_answers(self) -> None:
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        questions = [
+            "我的投資組合是不是太集中？",
+            "兆利和中華怎麼配置？",
+            "如果科技股下跌，我該注意什麼？",
+            "我的配息穩定嗎？",
+        ]
+
+        responses = [
+            builder.build_response(
+                PortfolioChatRequest(
+                    question=question,
+                    portfolio=self._portfolio_request(),
+                    language="zh",
+                )
+            )
+            for question in questions
+        ]
+        answers = [response.answer for response in responses]
+
+        self.assertEqual(len(set(answers)), len(answers))
+        self.assertIn("集中度判讀", answers[0])
+        self.assertIn("持股比較", answers[1])
+        self.assertIn("下行情境檢視", answers[2])
+        self.assertIn("收益品質檢視", answers[3])
+
+    def test_missing_current_prices_produce_caveat_not_fake_allocation(self) -> None:
+        from backend.schemas.portfolio import HoldingInput, PortfolioRequest
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        request = PortfolioChatRequest(
+            question="我的投資組合是不是太集中？",
+            portfolio=PortfolioRequest(
+                holdings=[
+                    HoldingInput(ticker="2204.TW", shares=500, avg_cost=84.56),
+                    HoldingInput(ticker="3548.TW", shares=410, avg_cost=180.49),
+                    HoldingInput(ticker="00878.TW", shares=2239, avg_cost=21.76),
+                ]
+            ),
+            language="zh",
+        )
+
+        with patch(
+            "backend.services.portfolio_context_builder.fetch_market_data",
+            side_effect=RuntimeError("network unavailable"),
+        ):
+            response = builder.build_response(request)
+
+        self.assertIn("成本基礎占比", response.answer)
+        self.assertIn("缺少目前價格", response.answer)
+        self.assertTrue(response.portfolio_context.data_caveats)
+        self.assertTrue(
+            all(
+                holding.weight_pct is None
+                for holding in response.portfolio_context.holdings
+            )
+        )
+        self.assertTrue(
+            all(
+                holding.unrealized_gain_loss is None
+                for holding in response.portfolio_context.holdings
+            )
+        )
+
+    def test_named_holding_comparison_references_both_requested_holdings(self) -> None:
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        response = builder.build_response(
+            PortfolioChatRequest(
+                question="兆利和中華怎麼配置？",
+                portfolio=self._portfolio_request(),
+                language="zh",
+            )
+        )
+
+        self.assertIn("3548.TW", response.answer)
+        self.assertIn("2204.TW", response.answer)
+        self.assertIn("named_holding_context", response.evidence_used)
+        self.assertIn(
+            "Signal evidence was unavailable for 3548.TW.",
+            response.portfolio_context.data_caveats,
+        )
+
+    def test_saved_portfolio_answer_has_no_save_workspace_reminder(self) -> None:
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        response = builder.build_response(
+            PortfolioChatRequest(
+                question="我的投資組合是不是太集中？",
+                portfolio=self._portfolio_request(),
+                language="zh",
+            )
+        )
+
+        combined = " ".join([response.answer, *response.suggested_followups])
+        self.assertNotIn("保存工作區", combined)
+        self.assertNotIn("儲存工作區", combined)
 
 
 if __name__ == "__main__":

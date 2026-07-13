@@ -1,8 +1,23 @@
 from __future__ import annotations
 
+import logging
+import os
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Literal
 
 try:
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_openai import ChatOpenAI
+except ImportError:  # pragma: no cover
+    ChatOpenAI = None
+    ChatPromptTemplate = None
+    StrOutputParser = None
+
+try:
+    from ..config import OPENAI_API_KEY, llm_portfolio_chat_enabled
     from ..schemas.portfolio import (
         HoldingInput,
         HoldingMetrics,
@@ -10,15 +25,26 @@ try:
         PortfolioRequest,
     )
     from ..schemas.portfolio_chat import (
+        EarningsEvidence,
+        HoldingCalculation,
+        MarketEvidence,
+        NewsEvidence,
+        PortfolioChatEvidenceBundle,
         PortfolioChatRequest,
         PortfolioChatResponse,
         PortfolioContext,
         PortfolioContextHolding,
+        SignalEvidence,
     )
     from ..schemas.portfolio_intelligence import ReviewItem
     from ..services.portfolio_calculator import calculate_portfolio_metrics
     from ..services.portfolio_store import PortfolioStore
+    from ..tools.earnings_tool import EarningsRequest, fetch_earnings
+    from ..tools.market_data_tool import MarketDataRequest, fetch_market_data
+    from ..tools.news_tool import NewsRequest, fetch_news
+    from ..tools.signal_tool import SignalToolRequest, fetch_signal
 except ImportError:
+    from config import OPENAI_API_KEY, llm_portfolio_chat_enabled
     from schemas.portfolio import (
         HoldingInput,
         HoldingMetrics,
@@ -26,24 +52,95 @@ except ImportError:
         PortfolioRequest,
     )
     from schemas.portfolio_chat import (
+        EarningsEvidence,
+        HoldingCalculation,
+        MarketEvidence,
+        NewsEvidence,
+        PortfolioChatEvidenceBundle,
         PortfolioChatRequest,
         PortfolioChatResponse,
         PortfolioContext,
         PortfolioContextHolding,
+        SignalEvidence,
     )
     from schemas.portfolio_intelligence import ReviewItem
     from services.portfolio_calculator import calculate_portfolio_metrics
     from services.portfolio_store import PortfolioStore
+    from tools.earnings_tool import EarningsRequest, fetch_earnings
+    from tools.market_data_tool import MarketDataRequest, fetch_market_data
+    from tools.news_tool import NewsRequest, fetch_news
+    from tools.signal_tool import SignalToolRequest, fetch_signal
 
 
 EN_DISCLAIMER = "This is an educational portfolio review, not financial advice."
 ZH_DISCLAIMER = "這是教育用途的投資組合檢視，不構成投資建議。"
+PORTFOLIO_CHAT_PROVIDER = "openai"
+PORTFOLIO_CHAT_MODEL = "gpt-4o-mini"
+logger = logging.getLogger(__name__)
+
+HOLDING_ALIASES = {
+    "中華": "2204.TW",
+    "2204": "2204.TW",
+    "兆利": "3548.TW",
+    "3548": "3548.TW",
+    "00878": "00878.TW",
+    "國泰永續高股息": "00878.TW",
+}
 
 
 @dataclass
 class ResolvedPortfolioContext:
     portfolio: PortfolioRequest
     source: str
+
+
+PortfolioChatIntent = Literal[
+    "portfolio_concentration",
+    "holding_comparison",
+    "current_performance",
+    "news_review",
+    "earnings_review",
+    "downside_scenario",
+    "review_priority",
+    "income_review",
+    "holdings_summary",
+]
+
+
+@dataclass
+class PortfolioEvidence:
+    intent: PortfolioChatIntent
+    named_tickers: list[str]
+    enrichment: dict[str, dict[str, float | str]]
+    caveats: list[str]
+    evidence_used: list[str]
+    tools_planned: list[str]
+    tools_called: list[str]
+    tools_succeeded: list[str]
+    tools_failed: list[str]
+    market_data: dict[str, MarketEvidence]
+    news: dict[str, list[NewsEvidence]]
+    earnings: dict[str, EarningsEvidence]
+    signals: dict[str, SignalEvidence]
+    data_as_of: str | None = None
+    bundle: PortfolioChatEvidenceBundle | None = None
+
+
+@dataclass
+class PortfolioChatGeneration:
+    answer: str | None
+    mode: Literal["llm", "deterministic"]
+    provider: str | None = None
+    model: str | None = None
+    fallback_used: bool = False
+
+
+def _generation_metadata_enabled() -> bool:
+    env_name = os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("NODE_ENV")
+    explicit = os.getenv("ENABLE_PORTFOLIO_CHAT_GENERATION_METADATA", "")
+    return explicit.strip().lower() in {"1", "true", "yes", "on"} or (
+        env_name or ""
+    ).strip().lower() in {"dev", "development", "local", "test"}
 
 
 def _contains_cjk(text: str) -> bool:
@@ -54,6 +151,104 @@ def _pick_language(request: PortfolioChatRequest) -> str:
     if request.language in {"en", "zh"}:
         return request.language
     return "zh" if _contains_cjk(request.question) else "en"
+
+
+def classify_portfolio_chat_intent(question: str) -> PortfolioChatIntent:
+    text = question.lower()
+    if any(keyword in question for keyword in ["新聞", "消息", "事件", "近期"]) or "news" in text:
+        return "news_review"
+    if any(keyword in question for keyword in ["配息", "股息", "收益", "收入"]):
+        return "income_review"
+    if any(keyword in question for keyword in ["比較", "配置", "角色", "和", "跟"]):
+        return "holding_comparison"
+    if any(keyword in question for keyword in ["財報", "法說"]) or any(
+        keyword in text for keyword in ["q1", "q2", "q3", "q4", "earnings"]
+    ):
+        return "earnings_review"
+    if any(keyword in question for keyword in ["目前", "現在", "報酬", "損益", "價格", "績效"]):
+        return "current_performance"
+    if any(keyword in question for keyword in ["下跌", "跌", "回檔", "壓力", "大盤", "科技股"]):
+        return "downside_scenario"
+    if any(keyword in question for keyword in ["優先", "先檢查", "注意哪", "檢視哪", "最該注意"]):
+        return "review_priority"
+    if any(keyword in question for keyword in ["有哪些", "整理", "持股清單", "目前有哪些"]):
+        return "holdings_summary"
+    if any(keyword in question for keyword in ["集中", "占比", "佔比", "太高"]) or any(
+        keyword in text for keyword in ["concentrat", "weight", "too high"]
+    ):
+        return "portfolio_concentration"
+    return "holdings_summary"
+
+
+def plan_portfolio_chat_tools(
+    intent: PortfolioChatIntent,
+    *,
+    named_tickers: list[str],
+) -> list[str]:
+    plan = ["portfolio_context", "portfolio_calculator"]
+    if intent in {
+        "portfolio_concentration",
+        "holding_comparison",
+        "current_performance",
+        "news_review",
+        "earnings_review",
+        "downside_scenario",
+        "review_priority",
+    }:
+        plan.append("market_data")
+    if intent in {"portfolio_concentration", "review_priority", "income_review"}:
+        plan.append("portfolio_intelligence")
+    if intent in {"holding_comparison", "news_review", "review_priority"}:
+        plan.append("news")
+    if intent in {"holding_comparison", "earnings_review", "review_priority"}:
+        plan.append("earnings")
+    if intent in {"holding_comparison", "current_performance", "review_priority"}:
+        plan.append("signal")
+    if intent == "downside_scenario":
+        plan.append("stress_test")
+    if named_tickers:
+        plan.append("named_holding_context")
+    return _dedupe_preserve_order(plan)
+
+
+def _extract_named_tickers(question: str, portfolio: PortfolioRequest) -> list[str]:
+    found: list[str] = []
+    normalized_question = question.lower()
+    for alias, ticker in HOLDING_ALIASES.items():
+        if alias.lower() in normalized_question and ticker not in found:
+            found.append(ticker)
+    for holding in portfolio.holdings:
+        candidates = [holding.ticker, holding.name or ""]
+        for candidate in candidates:
+            if (
+                candidate
+                and candidate.lower() in normalized_question
+                and holding.ticker not in found
+            ):
+                found.append(holding.ticker)
+    return found
+
+
+def _has_current_value_data(context: PortfolioContext) -> bool:
+    return any(holding.current_value is not None for holding in context.holdings)
+
+
+def _has_missing_price_data(context: PortfolioContext) -> bool:
+    return any(
+        holding.current_value is None and holding.current_price is None
+        for holding in context.holdings
+    )
+
+
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    results: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        results.append(item)
+    return results
 
 
 def _holding_to_context_holding(
@@ -128,18 +323,220 @@ def _summarise_income(analysis: PortfolioAnalysisResponse) -> str:
     )
 
 
-def _build_followups(language: str) -> list[str]:
+def _build_followups(language: str, intent: PortfolioChatIntent) -> list[str]:
+    zh_followups = {
+        "portfolio_concentration": [
+            "要查看前 3 大持股占比嗎？",
+            "要模擬最大持股下跌 15% 嗎？",
+            "要比較成本基礎占比和目前市值占比嗎？",
+        ],
+        "holding_comparison": [
+            "要比較兩檔的目前權重嗎？",
+            "要查看近期財報與訊號嗎？",
+            "要加入壓力測試比較它們的影響嗎？",
+        ],
+        "current_performance": [
+            "要查看目前損益最大的持股嗎？",
+            "要比較目前市值權重和成本基礎占比嗎？",
+            "要檢查近期相對訊號嗎？",
+        ],
+        "news_review": [
+            "要整理每檔持股最近的新聞重點嗎？",
+            "要查看新聞資料缺口嗎？",
+            "要把新聞和目前權重一起比較嗎？",
+        ],
+        "earnings_review": [
+            "要查看哪些持股缺少財報日期嗎？",
+            "要把財報風險和持股權重一起比較嗎？",
+            "要檢查近期財報後股價變動嗎？",
+        ],
+        "downside_scenario": [
+            "要模擬科技股下跌 15% 嗎？",
+            "要看哪一檔對下行情境影響最大嗎？",
+            "要檢查防禦型配置是否足夠嗎？",
+        ],
+        "review_priority": [
+            "要列出前三個優先檢查項目嗎？",
+            "要把未實現虧損和集中度一起比較嗎？",
+            "要查看監控清單中的新聞或財報提醒嗎？",
+        ],
+        "income_review": [
+            "要查看配息資料缺口嗎？",
+            "要比較收益來源是否太集中嗎？",
+            "要估算如果某檔配息降低的影響嗎？",
+        ],
+        "holdings_summary": [
+            "要看每檔持股的成本基礎嗎？",
+            "要補上目前價格後重新分析嗎？",
+            "要查看集中度或收益品質嗎？",
+        ],
+    }
+    en_followups = {
+        "portfolio_concentration": [
+            "Review the top 3 holding weights?",
+            "Run a 15% drawdown scenario on the largest holding?",
+            "Compare cost-basis exposure with current-value exposure?",
+        ],
+        "holding_comparison": [
+            "Compare the current weights for those holdings?",
+            "Review recent earnings and relative signals?",
+            "Add a stress scenario for the compared holdings?",
+        ],
+        "current_performance": [
+            "Review the largest current unrealized gains or losses?",
+            "Compare current-value weight with cost-basis exposure?",
+            "Check recent relative signal evidence?",
+        ],
+        "news_review": [
+            "Summarize recent news by holding?",
+            "Review where news coverage is missing?",
+            "Compare news context with current portfolio weights?",
+        ],
+        "earnings_review": [
+            "Review which holdings lack earnings dates?",
+            "Compare earnings event risk with portfolio weight?",
+            "Check recent post-earnings move history?",
+        ],
+        "downside_scenario": [
+            "Run a technology selloff stress test?",
+            "Review the largest downside contributors?",
+            "Check whether defensive exposure is enough?",
+        ],
+        "review_priority": [
+            "List the top three review items?",
+            "Compare unrealized losses with concentration?",
+            "Review monitoring alerts from news or earnings?",
+        ],
+        "income_review": [
+            "Review missing dividend data?",
+            "Check whether income sources are concentrated?",
+            "Estimate sensitivity to lower dividend assumptions?",
+        ],
+        "holdings_summary": [
+            "Show cost basis by holding?",
+            "Refresh analysis after adding current prices?",
+            "Review concentration or income quality?",
+        ],
+    }
     if language == "zh":
-        return [
-            "我是不是太集中在單一持股或主題？",
-            "如果科技股回檔，我的風險門檻會怎麼變化？",
-            "哪些持股需要優先檢視未實現虧損或收入穩定性？",
+        return zh_followups[intent]
+    return en_followups[intent]
+
+
+def _format_holding_line(holding: PortfolioContextHolding, *, language: str) -> str:
+    label = holding.name or holding.ticker
+    if language == "zh":
+        pieces = [
+            f"{label}（{holding.ticker}）",
+            f"{holding.shares:g} 股" if holding.shares is not None else "股數缺少",
+            f"平均成本 {holding.avg_cost:.2f}" if holding.avg_cost is not None else "成本缺少",
         ]
-    return [
-        "Is my portfolio too concentrated in one holding or theme?",
-        "How would a technology drawdown affect my current risk threshold?",
-        "Which holdings deserve the first review for losses or income stability?",
+        if holding.current_value is not None:
+            pieces.append(f"目前市值 {holding.current_value:.2f}")
+        if holding.weight_pct is not None:
+            pieces.append(f"權重 {holding.weight_pct:.2f}%")
+        if holding.return_pct is not None:
+            pieces.append(f"報酬 {holding.return_pct:.2f}%")
+        return "、".join(pieces)
+
+    pieces = [
+        f"{label} ({holding.ticker})",
+        f"{holding.shares:g} shares" if holding.shares is not None else "shares missing",
+        f"average cost {holding.avg_cost:.2f}" if holding.avg_cost is not None else "cost missing",
     ]
+    if holding.current_value is not None:
+        pieces.append(f"current value {holding.current_value:.2f}")
+    if holding.weight_pct is not None:
+        pieces.append(f"weight {holding.weight_pct:.2f}%")
+    if holding.return_pct is not None:
+        pieces.append(f"return {holding.return_pct:.2f}%")
+    return ", ".join(pieces)
+
+
+def _missing_price_caveat(language: str) -> str:
+    if language == "zh":
+        return (
+            "部分持股缺少目前價格或目前市值；以下只能使用成本基礎占比，"
+            "不能視為目前配置或目前集中度。"
+        )
+    return (
+        "Some holdings are missing current price or current value; this can only use "
+        "cost-basis exposure, not current allocation or current concentration."
+    )
+
+
+def _cost_basis_exposure_lines(context: PortfolioContext, *, language: str) -> list[str]:
+    total_cost = sum(holding.cost_basis or 0 for holding in context.holdings)
+    lines: list[str] = []
+    if total_cost <= 0:
+        return lines
+    sorted_holdings = sorted(
+        context.holdings,
+        key=lambda item: item.cost_basis or 0,
+        reverse=True,
+    )
+    for holding in sorted_holdings:
+        exposure = (holding.cost_basis or 0) / total_cost * 100
+        label = holding.name or holding.ticker
+        if language == "zh":
+            lines.append(f"- {label}（{holding.ticker}）：成本基礎占比 {exposure:.2f}%")
+        else:
+            lines.append(f"- {label} ({holding.ticker}): cost-basis exposure {exposure:.2f}%")
+    return lines[:5]
+
+
+def _calculation_map(context: PortfolioContext) -> dict[str, HoldingCalculation]:
+    return {
+        holding.ticker: HoldingCalculation(
+            ticker=holding.ticker,
+            cost_basis=holding.cost_basis,
+            current_value=holding.current_value,
+            unrealized_gain_loss=holding.unrealized_gain_loss,
+            return_pct=holding.return_pct,
+            weight_pct=holding.weight_pct,
+        )
+        for holding in context.holdings
+    }
+
+
+def _build_evidence_bundle(
+    context: PortfolioContext,
+    evidence: PortfolioEvidence,
+) -> PortfolioChatEvidenceBundle:
+    return PortfolioChatEvidenceBundle(
+        portfolio_context=context,
+        market_data=evidence.market_data,
+        calculations=_calculation_map(context),
+        news=evidence.news,
+        earnings=evidence.earnings,
+        signals=evidence.signals,
+        tool_errors=evidence.tools_failed,
+        data_caveats=sorted(set([*context.data_caveats, *evidence.caveats])),
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
+def _has_grounding_violation(answer: str) -> bool:
+    lowered = answer.lower()
+    forbidden_phrases = [
+        "guaranteed",
+        "target price",
+        "must buy",
+        "must sell",
+        "一定獲利",
+        "保證",
+        "目標價",
+        "必須買",
+        "必須賣",
+    ]
+    if any(phrase in lowered for phrase in forbidden_phrases):
+        return True
+
+    mismatched_pairs = [
+        ("兆利（2204.TW", "兆利 (2204.TW", "兆利(2204.TW"),
+        ("中華（3548.TW", "中華 (3548.TW", "中華(3548.TW"),
+    ]
+    return any(any(pattern in answer for pattern in group) for group in mismatched_pairs)
 
 
 def _build_answer(
@@ -147,57 +544,619 @@ def _build_answer(
     context: PortfolioContext,
     *,
     language: str,
+    intent: PortfolioChatIntent,
+    named_tickers: list[str] | None = None,
+    evidence_caveats: list[str] | None = None,
 ) -> str:
+    named_tickers = named_tickers or []
+    evidence_caveats = evidence_caveats or []
     review_items = context.suggested_review_items[:4]
+    has_current_values = _has_current_value_data(context)
+    missing_price = _has_missing_price_data(context)
+    caveat_lines = list(context.data_caveats) + evidence_caveats
+
+    def zh_caveats() -> list[str]:
+        lines = []
+        if missing_price:
+            lines.append(f"- {_missing_price_caveat('zh')}")
+        lines.extend(f"- {item}" for item in caveat_lines[:4])
+        return lines
+
+    def en_caveats() -> list[str]:
+        lines = []
+        if missing_price:
+            lines.append(f"- {_missing_price_caveat('en')}")
+        lines.extend(f"- {item}" for item in caveat_lines[:4])
+        return lines
+
     if language == "zh":
+        if intent == "portfolio_concentration":
+            if has_current_values:
+                exposure_lines = [
+                    f"- {_format_holding_line(item, language='zh')}"
+                    for item in context.top_holdings[:3]
+                ]
+                headline = f"集中度判讀：{context.concentration_summary}"
+            else:
+                exposure_lines = _cost_basis_exposure_lines(context, language="zh")
+                headline = "集中度判讀：目前缺少市價，因此先用成本基礎占比檢視。"
+            return "\n".join(
+                [
+                    "結論：你的投資組合集中度值得檢視，但需要區分目前市值占比與成本基礎占比。",
+                    headline,
+                    "主要占比：",
+                    *exposure_lines,
+                    "情境下一步：如果要更保守，可以接著模擬最大持股下跌 15% 的影響。",
+                    "資料限制：",
+                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                ]
+            )
+
+        if intent == "holding_comparison":
+            requested = [
+                item for item in context.holdings if item.ticker in set(named_tickers)
+            ] or context.top_holdings[:2]
+            lines = [f"- {_format_holding_line(item, language='zh')}" for item in requested]
+            return "\n".join(
+                [
+                    "比較重點：我會先比較你問到的持股在組合中的角色與資料完整性。",
+                    "持股比較：",
+                    *lines,
+                    "解讀：如果缺少目前價格，這裡不會推論目前權重；只能先看股數、成本與成本基礎。",
+                    "資料限制：",
+                    *(zh_caveats() or ["- 新聞、財報或訊號若不可用，不會被編入結論。"]),
+                ]
+            )
+
+        if intent == "current_performance":
+            lines = [
+                f"- {_format_holding_line(item, language='zh')}"
+                for item in context.top_holdings[:5]
+            ]
+            return "\n".join(
+                [
+                    "目前表現檢視：以下數字來自工具或你提供的目前價格，不由模型自行計算。",
+                    *lines,
+                    "資料限制：",
+                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                ]
+            )
+
+        if intent == "news_review":
+            return "\n".join(
+                [
+                    "新聞檢視：只會引用工具取得的新聞資料；如果新聞不可用，不會補編內容。",
+                    "目前可用結論：請以 evidence_used 和資料限制為準。",
+                    "資料限制：",
+                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                ]
+            )
+
+        if intent == "earnings_review":
+            return "\n".join(
+                [
+                    "財報檢視：若工具沒有確認日期或財務數字，這裡不會猜測 Q2 或其他財報資訊。",
+                    "目前可用結論：先檢查財報日期缺口，再把事件風險和持股權重一起看。",
+                    "資料限制：",
+                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                ]
+            )
+
+        if intent == "downside_scenario":
+            top = context.top_holdings[:3] if has_current_values else context.holdings[:3]
+            lines = [f"- {_format_holding_line(item, language='zh')}" for item in top]
+            return "\n".join(
+                [
+                    "下行情境檢視：這不是預測，而是用目前持股資料找出壓力測試時最需要監控的部位。",
+                    "可能影響較大的持股：",
+                    *lines,
+                    (
+                        "建議檢查：可以接著模擬科技股或最大持股下跌 "
+                        "15% 的情境，看哪一檔對組合影響最大。"
+                    ),
+                    "資料限制：",
+                    *(zh_caveats() or ["- 若沒有即時價格，壓力測試只能使用你輸入的價值基準。"]),
+                ]
+            )
+
+        if intent == "review_priority":
+            review_lines = [
+                f"- {item.title}: {item.reason}"
+                for item in review_items
+            ] or ["- 目前沒有觸發高優先檢查項目，先補齊價格、分類與配息資料。"]
+            return "\n".join(
+                [
+                    "優先檢查順序：我會以集中度、未實現虧損、資料缺口與監控訊號排序。",
+                    *review_lines,
+                    "資料限制：",
+                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                ]
+            )
+
+        if intent == "income_review":
+            return "\n".join(
+                [
+                    "收益品質檢視：配息估算只能當作啟發式檢查，不代表保證收入。",
+                    f"收益摘要：{context.income_summary}",
+                    "建議檢查：",
+                    "- 檢查是否有持股缺少股息資料。",
+                    "- 檢查預估收益是否集中在單一 ETF 或單一股票。",
+                    "資料限制：",
+                    *(zh_caveats() or ["- 若沒有股息輸入或工具資料，收益估算會偏保守。"]),
+                ]
+            )
+
+        holding_lines = [
+            f"- {_format_holding_line(item, language='zh')}"
+            for item in context.holdings
+        ]
+        return "\n".join(
+            [
+                "持股整理：以下是目前投資組合記憶中的完整持股。",
+                *holding_lines,
+                "資料限制：",
+                *(zh_caveats() or ["- 沒有市價時，不會推論目前報酬或目前配置。"]),
+            ]
+        )
+
+    if intent == "portfolio_concentration":
+        if has_current_values:
+            exposure_lines = [
+                f"- {_format_holding_line(item, language='en')}"
+                for item in context.top_holdings[:3]
+            ]
+            headline = f"Concentration read: {context.concentration_summary}"
+        else:
+            exposure_lines = _cost_basis_exposure_lines(context, language="en")
+            headline = (
+                "Concentration read: current prices are missing, so this uses "
+                "cost-basis exposure."
+            )
+        return "\n".join(
+            [
+                (
+                    "Conclusion: portfolio concentration is worth reviewing, but "
+                    "current-value exposure and cost-basis exposure must stay separate."
+                ),
+                headline,
+                "Largest exposures:",
+                *exposure_lines,
+                "Data caveats:",
+                *(en_caveats() or ["- No additional data caveats."]),
+            ]
+        )
+
+    if intent == "holding_comparison":
+        requested = [
+            item for item in context.holdings if item.ticker in set(named_tickers)
+        ] or context.top_holdings[:2]
+        lines = [f"- {_format_holding_line(item, language='en')}" for item in requested]
+        return "\n".join(
+            [
+                "Comparison focus: compare the requested holdings by role, size, and data quality.",
+                "Holding comparison:",
+                *lines,
+                (
+                    "Interpretation: if current prices are missing, this does not "
+                    "infer current weights."
+                ),
+                "Data caveats:",
+                *(
+                    en_caveats()
+                    or [
+                        "- News, earnings, or signal evidence was not fabricated "
+                        "when unavailable."
+                    ]
+                ),
+            ]
+        )
+
+    if intent == "current_performance":
+        lines = [
+            f"- {_format_holding_line(item, language='en')}"
+            for item in context.top_holdings[:5]
+        ]
+        return "\n".join(
+            [
+                "Current performance review: values come from tools or supplied prices, "
+                "not model arithmetic.",
+                *lines,
+                "Data caveats:",
+                *(en_caveats() or ["- No additional data caveats."]),
+            ]
+        )
+
+    if intent == "news_review":
+        return "\n".join(
+            [
+                (
+                    "News review: only tool-retrieved articles are used; "
+                    "missing news is not fabricated."
+                ),
+                "Available conclusion: rely on evidence_used and data caveats for coverage.",
+                "Data caveats:",
+                *(en_caveats() or ["- No additional data caveats."]),
+            ]
+        )
+
+    if intent == "earnings_review":
+        return "\n".join(
+            [
+                (
+                    "Earnings review: if confirmed dates or metrics are unavailable, "
+                    "they are not guessed."
+                ),
+                "Available conclusion: review earnings date gaps alongside portfolio weights.",
+                "Data caveats:",
+                *(en_caveats() or ["- No additional data caveats."]),
+            ]
+        )
+
+    if intent == "downside_scenario":
+        top = context.top_holdings[:3] if has_current_values else context.holdings[:3]
+        lines = [f"- {_format_holding_line(item, language='en')}" for item in top]
+        return "\n".join(
+            [
+                "Downside scenario review: this is a what-if review, not a prediction.",
+                "Holdings most worth monitoring in a stress scenario:",
+                *lines,
+                (
+                    "Suggested check: run a 15% drawdown scenario on technology "
+                    "or the largest holding."
+                ),
+                "Data caveats:",
+                *(
+                    en_caveats()
+                    or [
+                        "- Without live prices, stress testing can only use "
+                        "user-provided value assumptions."
+                    ]
+                ),
+            ]
+        )
+
+    if intent == "review_priority":
         review_lines = [
             f"- {item.title}: {item.reason}"
             for item in review_items
         ] or [
-            "- 目前沒有觸發新的高優先檢查項目，建議持續留意集中度與資料完整性。"
+            "- No high-priority review item was triggered; first improve price, "
+            "category, and dividend coverage."
         ]
         return "\n".join(
             [
-                f"問題重點：{question}",
                 (
-                    f"目前投資組合市值約為 {context.total_current_value or 0:.2f}，"
-                    f"未實現損益約為 {context.total_unrealized_gain_loss or 0:.2f}。"
+                    "Review priority: rank by concentration, unrealized losses, "
+                    "data gaps, and monitoring signals."
                 ),
-                f"集中度摘要：{context.concentration_summary}",
-                f"收益摘要：{context.income_summary}",
-                "建議優先檢視：",
                 *review_lines,
-                "後續可以考慮做情境比較、壓力測試，或持續監控集中風險門檻與資料缺口。",
+                "Data caveats:",
+                *(en_caveats() or ["- No additional data caveats."]),
             ]
         )
 
-    review_lines = [
-        f"- {item.title}: {item.reason}"
-        for item in review_items
-    ] or [
-        "- No new high-priority review item was triggered, so continue "
-        "monitoring concentration and data quality."
+    if intent == "income_review":
+        return "\n".join(
+            [
+                (
+                    "Income quality review: dividend estimates are heuristic and "
+                    "not guaranteed income."
+                ),
+                f"Income summary: {context.income_summary}",
+                "Suggested checks:",
+                "- Review holdings with missing dividend data.",
+                "- Review whether estimated income depends too heavily on one ETF or stock.",
+                "Data caveats:",
+                *(
+                    en_caveats()
+                    or [
+                        "- If dividend data is missing, income estimates may be "
+                        "conservative."
+                    ]
+                ),
+            ]
+        )
+
+    holding_lines = [
+        f"- {_format_holding_line(item, language='en')}"
+        for item in context.holdings
     ]
     return "\n".join(
         [
-            f"Question acknowledged: {question}",
-            (
-                f"Current portfolio value is approximately {context.total_current_value or 0:.2f}, "
-                f"with unrealized P/L near {context.total_unrealized_gain_loss or 0:.2f}."
+            "Holdings summary: these are the complete holdings currently in portfolio memory.",
+            *holding_lines,
+            "Data caveats:",
+            *(
+                en_caveats()
+                or [
+                    "- Without prices, current return and current allocation are "
+                    "not inferred."
+                ]
             ),
-            f"Concentration summary: {context.concentration_summary}",
-            f"Income summary: {context.income_summary}",
-            "Suggested review items:",
-            *review_lines,
-            "Consider a scenario review, stress test, or concentration threshold "
-            "check before changing assumptions.",
         ]
     )
+
+
+def _build_llm_answer(
+    question: str,
+    evidence_bundle: PortfolioChatEvidenceBundle,
+    *,
+    language: str,
+    intent: PortfolioChatIntent,
+    named_tickers: list[str],
+    evidence_caveats: list[str],
+) -> PortfolioChatGeneration:
+    if not (llm_portfolio_chat_enabled() and OPENAI_API_KEY):
+        return PortfolioChatGeneration(answer=None, mode="deterministic")
+    if not (ChatPromptTemplate and ChatOpenAI and StrOutputParser):
+        return PortfolioChatGeneration(
+            answer=None,
+            mode="deterministic",
+            provider=PORTFOLIO_CHAT_PROVIDER,
+            model=PORTFOLIO_CHAT_MODEL,
+        )
+
+    prompt = ChatPromptTemplate.from_template(
+        """
+You are a calm portfolio copilot for a demo product.
+Use only the supplied structured evidence bundle.
+Do not invent holdings, numbers, or market data.
+Do not say buy or sell.
+Do not promise returns or guaranteed outcomes.
+Do not use target price language.
+Do not add a reminder to save the workspace unless the user explicitly asks how memory works.
+Do not invent current prices, current values, news, earnings dates, signal scores, or dividends.
+Do not recalculate numeric values; use the calculations field exactly.
+Preserve all provided numeric values exactly.
+If market data, news, earnings, or signal evidence is missing, state that limitation clearly.
+Do not claim news, earnings, or signal conclusions unless those sections contain evidence.
+Make the response specific to the detected intent and the user's question.
+Use review-oriented language such as review, monitor, concentration, scenario, and risk threshold.
+Respond in the same language as the user when possible.
+
+User question:
+{question}
+
+Detected intent:
+{intent}
+
+Named holdings or tickers from question:
+{named_tickers}
+
+Structured evidence bundle:
+{evidence_bundle}
+
+Evidence caveats:
+{evidence_caveats}
+
+Preferred response language:
+{language}
+
+Write a concise, friendly answer that:
+- acknowledges the question
+- uses a structure appropriate for the detected intent
+- summarizes only evidence that is present
+- highlights 2-4 review or monitoring items
+- ends with a short non-advisory reminder
+"""
+    )
+    llm = ChatOpenAI(model=PORTFOLIO_CHAT_MODEL, temperature=0)
+    chain = prompt | llm | StrOutputParser()
+    try:
+        answer = chain.invoke(
+            {
+                "question": question,
+                "intent": intent,
+                "named_tickers": named_tickers,
+                "evidence_bundle": evidence_bundle.model_dump(mode="json"),
+                "evidence_caveats": evidence_caveats,
+                "language": language,
+            }
+        ).strip()
+        return PortfolioChatGeneration(
+            answer=answer,
+            mode="llm",
+            provider=PORTFOLIO_CHAT_PROVIDER,
+            model=PORTFOLIO_CHAT_MODEL,
+            fallback_used=False,
+        )
+    except Exception:
+        logger.warning(
+            "Portfolio chat LLM provider failed; using deterministic fallback",
+            extra={
+                "provider": PORTFOLIO_CHAT_PROVIDER,
+                "model": PORTFOLIO_CHAT_MODEL,
+            },
+        )
+        return PortfolioChatGeneration(
+            answer=None,
+            mode="deterministic",
+            provider=PORTFOLIO_CHAT_PROVIDER,
+            model=PORTFOLIO_CHAT_MODEL,
+            fallback_used=True,
+        )
 
 
 class PortfolioContextBuilder:
     def __init__(self, store: PortfolioStore | None = None) -> None:
         self.store = store or PortfolioStore()
+
+    def build_evidence(
+        self,
+        request: PortfolioChatRequest,
+        portfolio: PortfolioRequest,
+    ) -> PortfolioEvidence:
+        intent = classify_portfolio_chat_intent(request.question)
+        named_tickers = _extract_named_tickers(request.question, portfolio)
+        tools_planned = plan_portfolio_chat_tools(
+            intent,
+            named_tickers=named_tickers,
+        )
+        relevant_tickers = named_tickers or [
+            holding.ticker for holding in portfolio.holdings
+        ]
+        enrichment: dict[str, dict[str, float | str]] = {}
+        caveats: list[str] = []
+        evidence_used: list[str] = []
+        tools_called: list[str] = []
+        tools_succeeded: list[str] = []
+        tools_failed: list[str] = []
+        market_evidence: dict[str, MarketEvidence] = {}
+        news_evidence: dict[str, list[NewsEvidence]] = {}
+        earnings_evidence: dict[str, EarningsEvidence] = {}
+        signal_evidence: dict[str, SignalEvidence] = {}
+        generated_at = datetime.now(timezone.utc).isoformat()
+
+        if "market_data" in tools_planned:
+            for ticker in relevant_tickers[:5]:
+                tools_called.append("market_data")
+                try:
+                    market_data = fetch_market_data(
+                        MarketDataRequest(
+                            ticker=ticker,
+                            lookback_days=30,
+                            include_technicals=False,
+                        )
+                    )
+                    enrichment[ticker] = {
+                        "current_price": market_data.current_price,
+                        "market": market_data.market,
+                    }
+                    market_evidence[ticker] = MarketEvidence(
+                        ticker=ticker,
+                        market=market_data.market,
+                        current_price=market_data.current_price,
+                        as_of=market_data.as_of,
+                    )
+                    evidence_used.append("market_data")
+                    tools_succeeded.append("market_data")
+                except Exception:
+                    caveats.append(f"Current price evidence was unavailable for {ticker}.")
+                    tools_failed.append("market_data")
+
+        for holding in portfolio.holdings:
+            data = enrichment.get(holding.ticker)
+            if data:
+                continue
+            if holding.current_price is not None:
+                enrichment[holding.ticker] = {
+                    "current_price": holding.current_price,
+                    "market": "TW" if holding.ticker.endswith(".TW") else "US",
+                }
+                market_evidence[holding.ticker] = MarketEvidence(
+                    ticker=holding.ticker,
+                    market="TW" if holding.ticker.endswith(".TW") else "US",
+                    current_price=holding.current_price,
+                    as_of=generated_at,
+                )
+
+        if "named_holding_context" in tools_planned and named_tickers:
+            evidence_used.append("named_holding_context")
+
+        if "signal" in tools_planned:
+            for ticker in relevant_tickers[:3]:
+                tools_called.append("signal")
+                try:
+                    signal = fetch_signal(SignalToolRequest(ticker=ticker))
+                    evidence_used.append("signal")
+                    tools_succeeded.append("signal")
+                    signal_evidence[ticker] = SignalEvidence(
+                        ticker=signal.ticker,
+                        benchmark=signal.benchmark,
+                        horizon_days=signal.horizon_days,
+                        signal_score=signal.signal_score,
+                        signal_band=signal.signal_band,
+                        confidence=signal.confidence,
+                        positive_signals=signal.positive_signals,
+                        negative_signals=signal.negative_signals,
+                        data_caveats=signal.data_caveats,
+                        disclaimer=signal.disclaimer,
+                    )
+                    if signal.confidence == "Low":
+                        caveats.append(f"Signal confidence was low for {ticker}.")
+                    caveats.extend(signal.data_caveats[:2])
+                except Exception:
+                    caveats.append(f"Signal evidence was unavailable for {ticker}.")
+                    tools_failed.append("signal")
+
+        if "news" in tools_planned:
+            for ticker in relevant_tickers[:3]:
+                tools_called.append("news")
+                try:
+                    news = fetch_news(NewsRequest(ticker=ticker, max_articles=3))
+                    evidence_used.append("news")
+                    tools_succeeded.append("news")
+                    news_evidence[ticker] = [
+                        NewsEvidence(
+                            ticker=ticker,
+                            title=article.title,
+                            published_at=article.published_at,
+                            source=article.source,
+                            summary=article.summary,
+                            url=article.url,
+                            sentiment=article.sentiment,
+                            retrieved_at=generated_at,
+                        )
+                        for article in news.articles[:3]
+                    ]
+                    if news.total_articles == 0:
+                        caveats.append(f"Recent news coverage was limited for {ticker}.")
+                except Exception:
+                    caveats.append(f"Recent news evidence was unavailable for {ticker}.")
+                    tools_failed.append("news")
+
+        if "earnings" in tools_planned:
+            for ticker in relevant_tickers[:3]:
+                tools_called.append("earnings")
+                try:
+                    earnings = fetch_earnings(EarningsRequest(ticker=ticker))
+                    evidence_used.append("earnings")
+                    tools_succeeded.append("earnings")
+                    latest_report_date = (
+                        earnings.earnings_history[0].report_date
+                        if earnings.earnings_history
+                        else None
+                    )
+                    earnings_caveats: list[str] = []
+                    if earnings.next_earnings is None:
+                        earnings_caveats.append(
+                            f"Earnings timing was unavailable for {ticker}."
+                        )
+                    earnings_evidence[ticker] = EarningsEvidence(
+                        ticker=ticker,
+                        next_earnings_date=(
+                            earnings.next_earnings.report_date
+                            if earnings.next_earnings
+                            else None
+                        ),
+                        days_to_next_earnings=earnings.days_to_next_earnings,
+                        latest_report_date=latest_report_date,
+                        avg_eps_surprise_pct=earnings.avg_eps_surprise_pct,
+                        avg_post_earnings_move_pct=earnings.avg_post_earnings_move_pct,
+                        beat_rate=earnings.beat_rate,
+                        caveats=earnings_caveats,
+                    )
+                    caveats.extend(earnings_caveats)
+                except Exception:
+                    caveats.append(f"Earnings timing was unavailable for {ticker}.")
+                    tools_failed.append("earnings")
+
+        return PortfolioEvidence(
+            intent=intent,
+            named_tickers=named_tickers,
+            enrichment=enrichment,
+            caveats=sorted(set(caveats)),
+            evidence_used=_dedupe_preserve_order(evidence_used),
+            tools_planned=tools_planned,
+            tools_called=_dedupe_preserve_order(tools_called),
+            tools_succeeded=_dedupe_preserve_order(tools_succeeded),
+            tools_failed=_dedupe_preserve_order(tools_failed),
+            market_data=market_evidence,
+            news=news_evidence,
+            earnings=earnings_evidence,
+            signals=signal_evidence,
+            data_as_of=generated_at,
+        )
 
     def resolve_portfolio(
         self,
@@ -222,9 +1181,17 @@ class PortfolioContextBuilder:
             "A portfolio or workspace_id is required to build portfolio context."
         )
 
-    def build_context(self, request: PortfolioChatRequest) -> PortfolioContext:
+    def build_context(
+        self,
+        request: PortfolioChatRequest,
+        evidence: PortfolioEvidence | None = None,
+    ) -> PortfolioContext:
         resolved = self.resolve_portfolio(request)
-        analysis = calculate_portfolio_metrics(resolved.portfolio)
+        evidence = evidence or self.build_evidence(request, resolved.portfolio)
+        analysis = calculate_portfolio_metrics(
+            resolved.portfolio,
+            enrichment=evidence.enrichment,
+        )
         context_holdings = [
             _holding_to_context_holding(
                 holding_input,
@@ -256,15 +1223,44 @@ class PortfolioContextBuilder:
             concentration_summary=_summarise_concentration(analysis),
             income_summary=_summarise_income(analysis),
             holdings=context_holdings,
-            data_caveats=analysis.missing_data,
+            data_caveats=sorted(set([*analysis.missing_data, *evidence.caveats])),
         )
 
     def build_response(self, request: PortfolioChatRequest) -> PortfolioChatResponse:
+        request_id = str(uuid.uuid4())
         language = _pick_language(request)
         resolved = self.resolve_portfolio(request)
+        evidence = self.build_evidence(request, resolved.portfolio)
         context = self.build_context(
-            request.model_copy(update={"portfolio": resolved.portfolio})
+            request.model_copy(update={"portfolio": resolved.portfolio}),
+            evidence=evidence,
         )
+        evidence.bundle = _build_evidence_bundle(context, evidence)
+        generation = _build_llm_answer(
+            request.question,
+            evidence.bundle,
+            language=language,
+            intent=evidence.intent,
+            named_tickers=evidence.named_tickers,
+            evidence_caveats=evidence.caveats,
+        )
+        if generation.answer and _has_grounding_violation(generation.answer):
+            logger.warning(
+                "Portfolio chat LLM answer failed grounding validation; using fallback",
+                extra={
+                    "request_id": request_id,
+                    "provider": generation.provider,
+                    "model": generation.model,
+                    "intent": evidence.intent,
+                },
+            )
+            generation = PortfolioChatGeneration(
+                answer=None,
+                mode="deterministic",
+                provider=generation.provider,
+                model=generation.model,
+                fallback_used=True,
+            )
         evidence_used = [
             resolved.source,
             "portfolio_calculator",
@@ -273,11 +1269,48 @@ class PortfolioContextBuilder:
                 if context.suggested_review_items
                 else "base_portfolio_analysis"
             ),
+            *evidence.evidence_used,
         ]
+        if generation.answer is not None:
+            evidence_used.append("llm_portfolio_chat")
+        metadata = {
+            "mode": generation.mode,
+            "provider": generation.provider,
+            "model": generation.model,
+            "fallback_used": generation.fallback_used,
+            "request_id": request_id,
+            "intent": evidence.intent,
+            "tools_planned": evidence.tools_planned,
+            "tools_called": evidence.tools_called,
+            "tools_succeeded": evidence.tools_succeeded,
+            "tools_failed": evidence.tools_failed,
+            "data_as_of": evidence.data_as_of,
+        }
+        logger.info(
+            "Portfolio chat generation completed",
+            extra={
+                "request_id": request_id,
+                "mode": generation.mode,
+                "provider": generation.provider,
+                "model": generation.model,
+                "fallback_used": generation.fallback_used,
+                "intent": evidence.intent,
+            },
+        )
         return PortfolioChatResponse(
-            answer=_build_answer(request.question, context, language=language),
+            answer=generation.answer
+            if generation.answer is not None
+            else _build_answer(
+                request.question,
+                context,
+                language=language,
+                intent=evidence.intent,
+                named_tickers=evidence.named_tickers,
+                evidence_caveats=evidence.caveats,
+            ),
             portfolio_context=context,
-            evidence_used=evidence_used,
-            suggested_followups=_build_followups(language),
+            evidence_used=_dedupe_preserve_order(evidence_used),
+            suggested_followups=_build_followups(language, evidence.intent),
             safety_disclaimer=ZH_DISCLAIMER if language == "zh" else EN_DISCLAIMER,
+            generation_metadata=metadata if _generation_metadata_enabled() else None,
         )

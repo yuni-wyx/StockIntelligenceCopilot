@@ -1,5 +1,20 @@
 # Week 4.5: Portfolio Memory + Portfolio-Aware Chat
 
+## Current Status: Chat-First Recruiter MVP
+
+The earlier dashboard-oriented Wealth Studio plan is superseded for the
+primary `/portfolio` page. Portfolio Mode is now a simple chat-first MVP:
+
+1. Assistant asks for holdings.
+2. User enters natural holdings text.
+3. UI extracts structured holdings deterministically for supported demo inputs.
+4. User confirms and saves the current portfolio memory.
+5. Follow-up questions use the saved/current workspace through `/api/portfolio/chat`.
+
+Advanced portfolio analytics, scenario comparison, stress testing, monitor
+items, and portfolio intelligence remain preserved in backend services and
+reusable frontend modules, but are hidden from the default Portfolio page.
+
 ## Goal
 
 Turn Wealth Studio from a portfolio analytics dashboard into a **portfolio-aware investment copilot** that remembers the saved or current workspace and uses that context in natural portfolio questions.
@@ -60,6 +75,64 @@ Portfolio-Aware Chat Orchestrator
   ↓
 Grounded portfolio-aware response
 ```
+
+## Current Tool-Grounded Chat Architecture
+
+`POST /api/portfolio/chat` now uses deterministic tool planning before LLM
+synthesis:
+
+```text
+PortfolioChatRequest
+  ↓
+PortfolioChatOrchestrator
+  ↓
+PortfolioContextBuilder
+  ↓
+Intent classifier + deterministic tool plan
+  ↓
+Market data / news / earnings / signal tools
+  ↓
+PortfolioChatEvidenceBundle
+  ↓
+LLM synthesis with deterministic fallback
+```
+
+The LLM receives a compact evidence bundle and is instructed not to invent
+prices, news, earnings dates, signal scores, dividends, or recalculated values.
+If the LLM fails or produces an obvious grounding violation, the backend returns
+a deterministic fallback answer.
+
+### Current Data Providers
+
+- Market data: `yfinance` through `backend/tools/market_data_tool.py`.
+- News: Alpha Vantage for US tickers when `ALPHA_VANTAGE_API_KEY` is configured;
+  Yahoo Finance fallback where available.
+- Earnings: `yfinance` through `backend/tools/earnings_tool.py`.
+- Signals: deterministic Signal Engine through `backend/tools/signal_tool.py`.
+- Portfolio metrics: deterministic calculator in
+  `backend/services/portfolio_calculator.py`.
+
+No new API key, broker integration, vector database, model training, or cloud
+memory is required for this grounded chat path. Missing provider coverage is
+returned as a caveat instead of fabricated evidence.
+
+### Development Verification Metadata
+
+Set `ENABLE_PORTFOLIO_CHAT_GENERATION_METADATA=true` in development to return:
+
+- `mode`
+- `provider`
+- `model`
+- `fallback_used`
+- `intent`
+- `tools_planned`
+- `tools_called`
+- `tools_succeeded`
+- `tools_failed`
+- `data_as_of`
+
+This metadata is intentionally compact and must not include API keys, raw
+prompts, raw provider payloads, or full sensitive holdings logs.
 
 ### Proposed Components
 
@@ -136,25 +209,48 @@ Potential files:
 
 ### Frontend MVP
 
-- Add an **Ask About My Portfolio** panel inside Wealth Studio.
+- Replace the primary Portfolio page with one conversational interface.
 - Use saved/current workspace as the default memory source.
-- Provide starter question chips:
+- Begin onboarding when no current workspace exists.
+- Confirm extracted holdings before saving portfolio memory.
+- Provide starter question chips after portfolio memory is ready:
   - `我的風險高嗎？`
   - `我是不是太集中？`
   - `兆利跟中華怎麼配置？`
   - `配息收入穩定嗎？`
   - `如果科技股下跌，我受影響大嗎？`
-- Show whether the answer used:
+- Show compact evidence/context details when available:
   - saved holdings
   - portfolio intelligence
   - stress-test context
   - signal evidence
   - market/news/earnings evidence
 
+### Onboarding State Machine
+
+```text
+NO_PORTFOLIO
+  ↓
+ASK_HOLDINGS
+  ↓
+CONFIRM_HOLDINGS
+  ↓
+PORTFOLIO_SAVED
+  ↓
+CHAT_READY
+```
+
+Session chat history can remain browser-local for the MVP. The persisted memory
+is the structured current portfolio saved through the existing portfolio store.
+
 ## MVP Behavior
 
-- User saves or loads a workspace once.
-- User opens Wealth Studio and asks a natural portfolio question.
+- User opens Portfolio Mode.
+- If no current workspace exists, the assistant asks for holdings.
+- The user enters a natural-language holding list.
+- The UI extracts supported holdings, shows a compact confirmation, and saves
+  them as the current workspace after confirmation.
+- If a current workspace exists, it loads automatically.
 - System automatically uses the current or saved workspace as context.
 - System adds:
   - holdings
@@ -200,13 +296,13 @@ Preferred wording:
 
 ## Recommended Implementation Order
 
-1. Build `PortfolioContextBuilder` using existing saved/current workspace data.
-2. Add backend schema and orchestration for portfolio-aware chat.
-3. Reuse existing portfolio intelligence, stress-test, and signal evidence where available.
-4. Add frontend **Ask About My Portfolio** panel.
-5. Add starter question chips and evidence-used indicators.
-6. Add backend and frontend tests.
-7. Update README/demo notes after implementation stabilizes.
+1. Keep `PortfolioContextBuilder` and `/api/portfolio/chat` as the backend context path.
+2. Make `/portfolio` a chat-first page that auto-loads the current workspace.
+3. Add deterministic holdings extraction for supported recruiter-demo inputs.
+4. Confirm and save extracted holdings through the existing portfolio store.
+5. Use starter prompts and evidence-used indicators after memory is ready.
+6. Keep advanced analytics preserved but hidden from the primary MVP page.
+7. Update README/demo notes and smoke tests around the chat-first behavior.
 
 ## Assumptions
 

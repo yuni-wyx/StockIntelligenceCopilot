@@ -39,11 +39,13 @@ Yuni values work that is practical, demo-ready, and explainable. A small clean i
 
 Yuni's goal is a practical personal investment copilot, not just a dashboard. When product scope is ambiguous, prioritize:
 
-1. remembering portfolio context
-2. natural conversation
-3. evidence-backed analysis
-4. demo and resume value
-5. safe wording
+1. recruiter understands the product in under 30 seconds
+2. conversational onboarding before advanced analytics
+3. remembering portfolio context
+4. natural conversation
+5. evidence-backed analysis
+6. demo and resume value
+7. safe wording
 
 Avoid overbuilding advanced analytics before the core user flow is easy:
 
@@ -51,6 +53,8 @@ Avoid overbuilding advanced analytics before the core user flow is easy:
 - load current workspace quickly
 - ask a natural question
 - answer using portfolio context plus evidence
+
+For the primary `/portfolio` page, keep the experience chat-first. Do not bring back the dashboard-style holdings editor, snapshot cards, scenario tools, stress test panel, monitor panel, or saved-workspace list unless Yuni explicitly asks for that product direction again.
 
 ## Safe Local Debugging
 
@@ -131,11 +135,15 @@ Use structured output when appropriate:
 - Deterministic metrics must be visually and verbally distinct from heuristic estimates.
 - For portfolio-aware chat, prefer saved workspace context over asking the user to re-enter holdings when current workspace data is already available.
 - Do not frame suggestions as instructions. Use review-oriented wording tied to explicit evidence.
+- Portfolio-aware chat should use deterministic intent routing and tool evidence before LLM synthesis.
+- The LLM may explain, compare, and summarize, but it must not invent or recalculate portfolio numbers, prices, news, earnings dates, or signal values.
+- If market, news, earnings, or signal tools fail, state the missing evidence clearly and continue with available deterministic context.
 
 ## Numerical Discipline
 
 - Do not invent current prices, dividends, exposure weights, analyst signals, or source metadata.
 - Use user inputs, deterministic calculations, fetched tool output, or explicit source metadata only.
+- Preserve tool-generated numbers exactly when writing final answers.
 - If a dividend estimate is approximate because only yield data is available, label it as an estimate.
 - If data is missing, state that it is missing and explain how that limits confidence.
 - If a formula is unsupported, describe it as a placeholder or heuristic rather than a fact.

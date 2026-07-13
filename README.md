@@ -9,7 +9,7 @@ The project is built for research, education, and demo use. It is not financial 
 The app has evolved from a stock lookup tool into a broader investment copilot:
 
 - Research, Explain, and Trade copilot flows are available.
-- Wealth Studio supports holdings input, portfolio analysis, scenario simulation, and scenario comparison.
+- Portfolio Mode is now a chat-first recruiter MVP: the assistant asks for holdings, saves them as local portfolio memory, and uses that context for follow-up questions.
 - Portfolio calculations use deterministic formulas for cost basis, current value, unrealized gain/loss, and return percentage.
 - Stress testing, Signal Engine work, evidence aggregation, and provenance-aware insights are active product directions.
 - SSE streaming includes cancellation cleanup so Stop, refresh, navigation, and aborted requests do not silently leave orphaned streams.
@@ -22,12 +22,12 @@ The product direction is moving from a stock research dashboard toward a **portf
 Today it already combines:
 
 - ticker research across US and Taiwan markets
-- Wealth Studio for holdings analysis
+- chat-first Portfolio Mode for holdings memory and portfolio-aware conversations
 - deterministic stress tests and scenario review
 - benchmark-relative signal summaries
 - portfolio intelligence snapshots and review items
 
-The next milestone is to make the saved Wealth Studio workspace behave like lightweight portfolio memory, so users can ask natural questions without re-entering holdings every time.
+The Portfolio Mode MVP now makes the saved current workspace behave like lightweight portfolio memory, so users can ask natural questions without re-entering holdings every time.
 
 ## Feature Highlights
 
@@ -35,7 +35,7 @@ The next milestone is to make the saved Wealth Studio workspace behave like ligh
 - **Explain Mode**: price-move explanation with ranked drivers and caveats.
 - **Trade Mode**: structured setup analysis with risk framing.
 - **Watchlist Monitoring**: multi-symbol monitoring and relative signal review.
-- **Wealth Studio**: portfolio workspace for holdings, analysis, scenario review, and AI portfolio coaching.
+- **Portfolio Mode**: chat-first portfolio onboarding, saved holdings memory, and portfolio-aware follow-up questions.
 - **Portfolio Analysis**: concentration, allocation, income, missing data, and gain/loss review.
 - **Scenario Builder**: compare sell, buy, concentration reduction, and add-position scenarios while preserving backend payload shape.
 - **Stress Testing**: evaluate portfolio sensitivity under hypothetical downside or thematic pressure.
@@ -44,27 +44,57 @@ The next milestone is to make the saved Wealth Studio workspace behave like ligh
 
 ## Current Progress
 
-- **Wealth Studio**: holdings editor, analysis, save/load workspace flows, and AI portfolio coaching UX
+- **Portfolio Mode**: chat-first onboarding, deterministic holdings extraction for demo inputs, save/load workspace memory, and portfolio-aware chat
 - **Portfolio Stress Test**: deterministic what-if shock analysis for portfolio review
 - **Signal Engine**: transparent benchmark-relative signal scoring with caveats
 - **Portfolio Intelligence**: concentration, income quality, downside attribution, and review-item summaries
 
-## Planned Milestone: Week 4.5 Portfolio Memory + Portfolio-Aware Chat
+## Portfolio Mode: Chat-First Recruiter MVP
 
 Why this matters:
 
 - it removes repeated manual portfolio context entry
 - it turns the saved or current workspace into lightweight analysis memory
-- it lets the copilot combine holdings, weights, portfolio intelligence, stress-test context, signal evidence, and market research in one answer
+- it lets a recruiter understand the product idea in under 30 seconds
 
-Planned user flow:
+Primary user flow:
 
-1. Save or load a Wealth Studio workspace once.
-2. Ask a natural question such as `我的風險是不是太集中？` or `兆利跟中華目前可以怎麼配置？`
-3. Inject saved holdings, deterministic portfolio metrics, portfolio intelligence, stress-test summaries, and relevant evidence into the response workflow.
-4. Return a cautious, evidence-based answer that supports review and monitoring rather than direct commands.
+1. Open Portfolio Mode.
+2. The assistant asks what stocks or ETFs the user owns, how many shares, and average cost.
+3. The user enters a sentence such as `我有兆利 1000 股，成本 152；中華 2000 股，成本 91。`
+4. The UI extracts and confirms structured holdings.
+5. The user saves the holdings as the current portfolio memory.
+6. Follow-up questions use the saved portfolio context through `/api/portfolio/chat`.
 
-See [Week 4.5 Portfolio-Aware Chat Spec](docs/portfolio-aware-chat-spec.md) for the implementation plan.
+Advanced portfolio analytics, scenarios, stress tests, monitor panels, and intelligence snapshots still exist in the backend and reusable frontend modules, but they are intentionally hidden from the primary recruiter-facing Portfolio page.
+
+See [Week 4.5 Portfolio-Aware Chat Spec](docs/portfolio-aware-chat-spec.md) for the current MVP behavior and constraints.
+
+### Tool-Grounded Portfolio Chat
+
+Portfolio Chat now builds a deterministic evidence bundle before asking the LLM
+to synthesize an answer. The backend first resolves holdings, plans tools by
+question intent, calculates portfolio metrics, and then attaches market data,
+news, earnings, and Signal Engine evidence where available.
+
+Current providers:
+
+- market data: `yfinance`
+- news: Alpha Vantage for US tickers when configured, with Yahoo Finance fallback
+- earnings: `yfinance`
+- signals: deterministic Signal Engine
+- portfolio values: deterministic portfolio calculator
+
+If a tool fails or data is unavailable, the answer should state the caveat
+instead of fabricating evidence. In development, set:
+
+```bash
+ENABLE_PORTFOLIO_CHAT_GENERATION_METADATA=true
+```
+
+to inspect `generation_metadata`, including `intent`, `tools_planned`,
+`tools_called`, `tools_succeeded`, `tools_failed`, `mode`, `provider`, `model`,
+and `fallback_used`.
 
 ## Architecture Summary
 
@@ -92,7 +122,7 @@ Core modules:
 - `backend/services/portfolio_calculator.py`: deterministic portfolio calculations
 - `backend/pipeline/portfolio_orchestrator.py`: portfolio analysis and scenario workflows
 - `frontend/stock-ui/src/app/copilot/page.tsx`: copilot UI
-- `frontend/stock-ui/src/app/portfolio/page.tsx`: Wealth Studio UI
+- `frontend/stock-ui/src/app/portfolio/page.tsx`: chat-first Portfolio Mode coordinator
 - `frontend/stock-ui/src/lib`: frontend API, ticker, and state helpers
 
 ## Runtime Migration
@@ -185,6 +215,7 @@ Common variables:
 - `NEXT_PUBLIC_BACKEND_BASE_URL`
 - `BACKEND_CORS_ORIGINS`
 - `ENABLE_LLM_TRADE_SYNTHESIS`
+- `ENABLE_LLM_PORTFOLIO_CHAT`
 - `LANGCHAIN_API_KEY`
 - `LANGCHAIN_TRACING_V2`
 - `LANGCHAIN_PROJECT`
@@ -383,13 +414,13 @@ Strong demo path:
 1. Open the home page after curl checks pass.
 2. Show Copilot Research with a familiar ticker.
 3. Switch to Explain or Trade to show task-specific workflows.
-4. Open Wealth Studio.
-5. Add or load a small portfolio.
-6. Run Analyze Holdings.
-7. Highlight deterministic metrics: Current Value, Cost Basis, Unrealized Gain/Loss, Return %.
-8. Show heuristic portfolio snapshot and data quality caveats.
-9. Run a scenario or scenario comparison.
-10. Ask AI Portfolio Coach for a cautious review item.
+4. Open Portfolio Mode.
+5. Let the assistant ask for holdings.
+6. Enter `我有兆利 1000 股，成本 152；中華 2000 股，成本 91。`
+7. Confirm the parsed holdings and save portfolio memory.
+8. Ask `兆利和中華目前應該怎麼配置？`
+9. Refresh or revisit Portfolio Mode to show the saved memory loading automatically.
+10. Ask a follow-up question without re-entering holdings.
 
 Avoid presenting heuristic scores as objective ratings. Use phrasing like "relative signal", "stress test", and "suggested review item."
 
@@ -417,6 +448,7 @@ For portfolio-aware chat and portfolio intelligence features:
 - do not present ranges as guaranteed targets
 - frame any price-level discussion as watch levels, review zones, valuation context, or risk thresholds
 - do not issue direct buy/sell commands
+- if you want the portfolio chat to use the optional LLM path, set `OPENAI_API_KEY` and `ENABLE_LLM_PORTFOLIO_CHAT=true` in `backend/.env`
 
 Any number shown in the UI or generated output should come from user input, deterministic calculation, fetched tool output, or explicit source metadata. If data is missing, say it is missing.
 

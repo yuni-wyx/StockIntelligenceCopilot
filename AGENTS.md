@@ -129,8 +129,16 @@ Existing optional provider integrations must remain clearly documented and guard
 
 ## Portfolio-Aware Chat Rules
 
+- Portfolio Mode is intentionally chat-first for recruiter demos.
+- Do not restore dashboard sections to the primary `/portfolio` page without explicit approval.
+- The primary Portfolio page should communicate the core idea quickly: enter holdings once, save portfolio memory, then ask portfolio-aware questions.
+- Advanced analytics, scenario tools, monitor panels, stress tests, and intelligence snapshots should remain preserved in backend/reusable modules, but hidden from the default MVP page unless Yuni asks to surface them again.
 - Treat the saved or current Wealth Studio workspace as the default portfolio memory source.
 - Prefer a deterministic portfolio context builder before introducing any long-term memory, vector memory, or embedding workflow.
+- Portfolio Chat must be tool-grounded before LLM synthesis: classify intent, plan tools deterministically, calculate metrics, attach compact market/news/earnings/signal evidence, then ask the existing LLM to explain only that evidence.
+- The LLM must not calculate portfolio values, invent prices, invent news, invent earnings dates, alter signal scores, or create unsupported citations.
+- If a Portfolio Chat tool fails, continue with available evidence and add a caveat; do not fail the whole chat and do not fabricate the missing data.
+- In development, `ENABLE_PORTFOLIO_CHAT_GENERATION_METADATA=true` may expose compact tool metadata (`intent`, `tools_planned`, `tools_called`, `tools_succeeded`, `tools_failed`, `mode`, `provider`, `model`, `fallback_used`) without secrets, raw prompts, or raw provider payloads.
 - Do not introduce database memory, vector databases, brokerage scraping, or brokerage login flows unless Yuni explicitly approves them.
 - Do not store secrets, brokerage credentials, or account tokens in the repo, local fixtures, or demo persistence layer.
 - Any brokerage, custodian, or third-party portfolio API integration requires explicit approval first.
