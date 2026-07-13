@@ -99,16 +99,21 @@ and `fallback_used`.
 ## Architecture Summary
 
 ```mermaid
-flowchart LR
-    U["User"] --> F["Next.js Frontend"]
-    F --> A["FastAPI API"]
-    A --> R["Unified Agent Runtime"]
-    R --> P["Planner"]
-    P --> T["Tool Router / Services"]
-    T --> E["Evidence Bundle"]
-    E --> S["Synthesis"]
-    S --> O["Response / SSE Events"]
-    O --> F
+flowchart TD
+    User["User"] --> FE["Next.js Frontend"]
+    FE --> API["FastAPI Backend"]
+    API --> Runtime["Unified Agent Runtime"]
+    Runtime --> Planner["Planner / Intent"]
+    Planner --> Router["Tool Router"]
+    Router --> Tools["Market Data / News / Earnings / Fundamentals / Signal"]
+    Tools --> Evidence["Evidence Bundle + Provenance"]
+    Evidence --> Synth["Synthesis / LLM or Deterministic Fallback"]
+    Synth --> API
+    API --> FE
+
+    API --> Store["SQLite Portfolio Store"]
+    Store --> PortfolioChat["Portfolio Context Builder"]
+    PortfolioChat --> Evidence
 ```
 
 Core modules:
@@ -124,6 +129,44 @@ Core modules:
 - `frontend/stock-ui/src/app/copilot/page.tsx`: copilot UI
 - `frontend/stock-ui/src/app/portfolio/page.tsx`: chat-first Portfolio Mode coordinator
 - `frontend/stock-ui/src/lib`: frontend API, ticker, and state helpers
+
+### Portfolio Chat Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Portfolio UI
+    participant API as FastAPI
+    participant Store as SQLite Store
+    participant Builder as PortfolioContextBuilder
+    participant Tools as Market / News / Earnings / Signal
+    participant LLM as Optional LLM
+
+    U->>UI: Enter holdings or ask a portfolio question
+    UI->>API: POST /api/portfolio/chat
+    API->>Store: Load saved/current workspace if needed
+    API->>Builder: Build deterministic portfolio context
+    Builder->>Builder: Classify question intent
+    Builder->>Builder: Calculate cost basis, value, returns, coverage
+    Builder->>Tools: Fetch relevant market/news/earnings/signal evidence
+    Tools-->>Builder: Evidence or safe caveats
+    alt LLM enabled and grounded response passes validation
+        Builder->>LLM: Summarize only supplied evidence
+        LLM-->>Builder: Grounded answer
+    else LLM disabled, failed, or unsafe
+        Builder->>Builder: Deterministic fallback answer
+    end
+    Builder-->>API: PortfolioChatResponse
+    API-->>UI: Answer, evidence_used, disclaimer, metadata if enabled
+```
+
+Portfolio Chat is intentionally evidence-first. The LLM is optional and only
+receives a compact evidence bundle after deterministic context building,
+question-intent routing, portfolio calculations, and tool retrieval. If current
+prices, news, earnings, or signal data are unavailable, the response should say
+so rather than inferring missing facts. If only some holdings have current
+prices, the system labels partial exposure as cost-basis exposure and does not
+claim full current allocation.
 
 ## Runtime Migration
 
@@ -349,11 +392,20 @@ Portfolio routes:
 - `POST /api/portfolio/scenario`
 - `POST /api/portfolio/scenarios/compare`
 - `POST /api/portfolio/agent`
+- `POST /api/portfolio/chat`
+- `POST /api/portfolio/monitor`
+- `POST /api/portfolio/import/preview`
 - `POST /api/portfolio/save`
 - `GET /api/portfolio/current`
 - `PUT /api/portfolio/current`
 - `DELETE /api/portfolio/current`
 - `GET /api/portfolio/list`
+
+Investor memory routes:
+
+- `GET /api/investor/profile`
+- `PUT /api/investor/profile`
+- `GET /api/investor/memory`
 
 ## Error Handling Overview
 
