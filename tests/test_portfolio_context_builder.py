@@ -380,7 +380,9 @@ class PortfolioContextBuilderTest(unittest.TestCase):
             response = builder.build_response(request)
 
         self.assertIn("成本基礎占比", response.answer)
-        self.assertIn("缺少目前價格", response.answer)
+        self.assertIn("無法取得 2204.TW 的現價", response.answer)
+        self.assertIn("成本基礎占比", response.answer)
+        self.assertNotIn("Missing current value and price/shares", response.answer)
         self.assertTrue(response.portfolio_context.data_caveats)
         self.assertTrue(
             all(
@@ -411,10 +413,179 @@ class PortfolioContextBuilderTest(unittest.TestCase):
         self.assertIn("3548.TW", response.answer)
         self.assertIn("2204.TW", response.answer)
         self.assertIn("named_holding_context", response.evidence_used)
-        self.assertIn(
-            "Signal evidence was unavailable for 3548.TW.",
-            response.portfolio_context.data_caveats,
+        self.assertIn("目前無法取得 3548.TW 的相對訊號", response.answer)
+        self.assertTrue(
+            any("3548.TW 的相對訊號" in item for item in response.portfolio_context.data_caveats)
         )
+
+    def test_missing_price_caveats_are_localized_and_deduplicated(self) -> None:
+        from backend.schemas.portfolio import HoldingInput, PortfolioRequest
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        request = PortfolioChatRequest(
+            question="兆利和中華目前可以怎麼配置？",
+            portfolio=PortfolioRequest(
+                holdings=[
+                    HoldingInput(ticker="2204.TW", name="中華", shares=500, avg_cost=84.56),
+                    HoldingInput(ticker="3548.TW", name="兆利", shares=410, avg_cost=180.49),
+                ]
+            ),
+            language="zh",
+        )
+
+        with patch(
+            "backend.services.portfolio_context_builder.fetch_market_data",
+            side_effect=RuntimeError("market data unavailable"),
+        ):
+            response = builder.build_response(request)
+
+        self.assertEqual(response.answer.count("目前無法取得 3548.TW 的現價"), 1)
+        self.assertEqual(
+            sum(
+                "目前無法取得 3548.TW 的現價" in item
+                for item in response.portfolio_context.data_caveats
+            ),
+            1,
+        )
+        combined = " ".join([response.answer, *response.portfolio_context.data_caveats])
+        self.assertNotIn("Current price evidence was unavailable", combined)
+        self.assertNotIn("Missing current value and price/shares", combined)
+
+    def test_partial_price_coverage_does_not_show_false_full_weight(self) -> None:
+        from types import SimpleNamespace
+
+        from backend.schemas.portfolio import HoldingInput, PortfolioRequest
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        def market_side_effect(request):
+            if request.ticker == "2204.TW":
+                return SimpleNamespace(
+                    ticker="2204.TW",
+                    market="TW",
+                    current_price=91.0,
+                    as_of="2026-07-13T00:00:00+00:00",
+                )
+            raise RuntimeError("market data unavailable")
+
+        builder = PortfolioContextBuilder()
+        request = PortfolioChatRequest(
+            question="兆利和中華目前可以怎麼配置？",
+            portfolio=PortfolioRequest(
+                holdings=[
+                    HoldingInput(ticker="2204.TW", name="中華", shares=500, avg_cost=84.56),
+                    HoldingInput(ticker="3548.TW", name="兆利", shares=410, avg_cost=180.49),
+                ]
+            ),
+            language="zh",
+        )
+
+        with patch(
+            "backend.services.portfolio_context_builder.fetch_market_data",
+            side_effect=market_side_effect,
+        ):
+            response = builder.build_response(request)
+
+        self.assertFalse(response.portfolio_context.coverage.allocation_complete)
+        self.assertEqual(response.portfolio_context.coverage.priced_holdings_count, 1)
+        self.assertEqual(response.portfolio_context.coverage.unpriced_holdings_count, 1)
+        self.assertIn("無法可靠計算完整投資組合權重", response.answer)
+        self.assertIn("中華（2204.TW）：成本基礎占比 36.36%", response.answer)
+        self.assertIn("兆利（3548.TW）：成本基礎占比 63.64%", response.answer)
+        self.assertNotIn("權重 100.00%", response.answer)
+        self.assertNotIn("100% 的投資組合", response.answer)
+        self.assertIsNone(response.portfolio_context.total_current_value)
+        self.assertTrue(
+            all(holding.weight_pct is None for holding in response.portfolio_context.holdings)
+        )
+
+    def test_all_current_price_case_still_calculates_current_weights(self) -> None:
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        response = builder.build_response(
+            PortfolioChatRequest(
+                question="兆利和中華目前可以怎麼配置？",
+                portfolio=self._portfolio_request(),
+                language="zh",
+            )
+        )
+
+        self.assertTrue(response.portfolio_context.coverage.allocation_complete)
+        self.assertGreater(response.portfolio_context.total_current_value or 0, 0)
+        self.assertTrue(
+            any(holding.weight_pct is not None for holding in response.portfolio_context.holdings)
+        )
+
+    def test_llm_prompt_contains_partial_coverage_grounding_rules(self) -> None:
+        source = Path("backend/services/portfolio_context_builder.py").read_text()
+
+        self.assertIn("Never describe a priced subset as the full portfolio.", source)
+        self.assertIn("coverage.allocation_complete", source)
+        self.assertIn("Distinguish current-value weight from cost-basis exposure.", source)
+
+    def test_missing_news_still_produces_useful_answer(self) -> None:
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        response = builder.build_response(
+            PortfolioChatRequest(
+                question="最近有什麼新聞要注意？",
+                portfolio=self._portfolio_request(),
+                language="zh",
+            )
+        )
+
+        self.assertIn("目前仍可用的投資組合脈絡", response.answer)
+        self.assertIn("新聞工具目前未取得", response.answer)
+        self.assertNotIn("目前可用結論：請以 evidence_used", response.answer)
+
+    def test_missing_earnings_does_not_fabricate_dates(self) -> None:
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        response = builder.build_response(
+            PortfolioChatRequest(
+                question="需要等 Q2 財報嗎？",
+                portfolio=self._portfolio_request(),
+                language="zh",
+            )
+        )
+
+        self.assertIn("不會猜測 Q2", response.answer)
+        self.assertIn("目前無法取得", response.answer)
+        self.assertNotIn("2026-", response.answer)
+
+    def test_incomplete_classification_adds_defensive_allocation_caveat(self) -> None:
+        from backend.schemas.portfolio import HoldingInput, PortfolioRequest
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        response = builder.build_response(
+            PortfolioChatRequest(
+                question="哪些持股需要優先檢查？",
+                portfolio=PortfolioRequest(
+                    holdings=[
+                        HoldingInput(
+                            ticker="2204.TW",
+                            name="中華",
+                            shares=500,
+                            avg_cost=84.56,
+                            current_price=91,
+                        )
+                    ]
+                ),
+                language="zh",
+            )
+        )
+
+        self.assertIn("防禦型配置判讀只能作為粗略檢查", response.answer)
 
     def test_saved_portfolio_answer_has_no_save_workspace_reminder(self) -> None:
         from backend.schemas.portfolio_chat import PortfolioChatRequest

@@ -518,9 +518,44 @@ class PortfolioChatApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIn("成本基礎占比", payload["answer"])
-        self.assertIn("Current price evidence was unavailable", str(payload))
+        self.assertIn("目前無法取得 2204.TW 的現價", str(payload))
+        self.assertNotIn("Current price evidence was unavailable", str(payload))
+        self.assertNotIn("Missing current value and price/shares", str(payload))
         self.assertIsNone(payload["portfolio_context"]["holdings"][0]["current_price"])
         self.assertIsNone(payload["portfolio_context"]["holdings"][0]["weight_pct"])
+
+    def test_generation_metadata_reports_caveat_dedup_counts(self) -> None:
+        from backend.main import app
+
+        portfolio = {
+            "holdings": [
+                {"ticker": "2204.TW", "shares": 500, "avg_cost": 84.56},
+                {"ticker": "3548.TW", "shares": 410, "avg_cost": 180.49},
+            ],
+            "base_currency": "TWD",
+        }
+
+        with patch(
+            "backend.services.portfolio_context_builder._generation_metadata_enabled",
+            return_value=True,
+        ), patch(
+            "backend.services.portfolio_context_builder.fetch_market_data",
+            side_effect=RuntimeError("market data unavailable"),
+        ):
+            response = TestClient(app).post(
+                "/api/portfolio/chat",
+                json={
+                    "question": "我的投資組合是不是太集中？",
+                    "portfolio": portfolio,
+                    "language": "zh",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        metadata = response.json()["generation_metadata"]
+        self.assertIn("caveats_before_dedup", metadata)
+        self.assertIn("caveats_after_dedup", metadata)
+        self.assertIn("目前無法取得 3548.TW 的現價", " ".join(metadata["caveats_after_dedup"]))
 
     def test_internal_failure_returns_500_without_traceback(self) -> None:
         from backend.main import app

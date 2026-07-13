@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -34,6 +34,7 @@ try:
         PortfolioChatResponse,
         PortfolioContext,
         PortfolioContextHolding,
+        PortfolioCoverageSnapshot,
         SignalEvidence,
     )
     from ..schemas.portfolio_intelligence import ReviewItem
@@ -61,6 +62,7 @@ except ImportError:
         PortfolioChatResponse,
         PortfolioContext,
         PortfolioContextHolding,
+        PortfolioCoverageSnapshot,
         SignalEvidence,
     )
     from schemas.portfolio_intelligence import ReviewItem
@@ -124,6 +126,8 @@ class PortfolioEvidence:
     signals: dict[str, SignalEvidence]
     data_as_of: str | None = None
     bundle: PortfolioChatEvidenceBundle | None = None
+    caveats_before_dedup: list[str] = field(default_factory=list)
+    user_caveats: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -240,6 +244,12 @@ def _has_missing_price_data(context: PortfolioContext) -> bool:
     )
 
 
+def _round2(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(value + 1e-12, 2)
+
+
 def _dedupe_preserve_order(items: list[str]) -> list[str]:
     seen: set[str] = set()
     results: list[str] = []
@@ -249,6 +259,57 @@ def _dedupe_preserve_order(items: list[str]) -> list[str]:
         seen.add(item)
         results.append(item)
     return results
+
+
+def _build_coverage_snapshot(
+    holdings: list[PortfolioContextHolding],
+    source_holdings: list[HoldingInput],
+) -> PortfolioCoverageSnapshot:
+    material_holdings = [holding for holding in holdings if (holding.cost_basis or 0) > 0]
+    material_count = len(material_holdings)
+    priced_holdings = [
+        holding for holding in material_holdings if holding.current_value is not None
+    ]
+    total_cost_basis = sum(holding.cost_basis or 0 for holding in material_holdings)
+    priced_cost_basis = sum(holding.cost_basis or 0 for holding in priced_holdings)
+    priced_current_value = sum(holding.current_value or 0 for holding in priced_holdings)
+    classified_count = sum(
+        1
+        for holding in source_holdings
+        if holding.asset_type or holding.category
+    )
+    total_source_count = len(source_holdings)
+    return PortfolioCoverageSnapshot(
+        total_holdings_count=material_count,
+        priced_holdings_count=len(priced_holdings),
+        unpriced_holdings_count=max(material_count - len(priced_holdings), 0),
+        classified_holdings_count=classified_count,
+        unclassified_holdings_count=max(total_source_count - classified_count, 0),
+        priced_current_value=_round2(priced_current_value),
+        priced_cost_basis=_round2(priced_cost_basis),
+        total_cost_basis=_round2(total_cost_basis),
+        current_price_coverage_pct_by_count=(
+            _round2(len(priced_holdings) / material_count * 100)
+            if material_count
+            else None
+        ),
+        current_price_coverage_pct_by_cost_basis=(
+            _round2(priced_cost_basis / total_cost_basis * 100)
+            if total_cost_basis
+            else None
+        ),
+        classification_coverage_pct=(
+            _round2(classified_count / total_source_count * 100)
+            if total_source_count
+            else None
+        ),
+        allocation_complete=material_count > 0 and len(priced_holdings) == material_count,
+        classification_complete=total_source_count > 0 and classified_count == total_source_count,
+    )
+
+
+def _has_complete_allocation(context: PortfolioContext) -> bool:
+    return context.coverage.allocation_complete
 
 
 def _holding_to_context_holding(
@@ -423,7 +484,12 @@ def _build_followups(language: str, intent: PortfolioChatIntent) -> list[str]:
     return en_followups[intent]
 
 
-def _format_holding_line(holding: PortfolioContextHolding, *, language: str) -> str:
+def _format_holding_line(
+    holding: PortfolioContextHolding,
+    *,
+    language: str,
+    include_weight: bool = True,
+) -> str:
     label = holding.name or holding.ticker
     if language == "zh":
         pieces = [
@@ -431,9 +497,11 @@ def _format_holding_line(holding: PortfolioContextHolding, *, language: str) -> 
             f"{holding.shares:g} 股" if holding.shares is not None else "股數缺少",
             f"平均成本 {holding.avg_cost:.2f}" if holding.avg_cost is not None else "成本缺少",
         ]
+        if holding.cost_basis is not None:
+            pieces.append(f"成本基礎 {holding.cost_basis:.2f}")
         if holding.current_value is not None:
             pieces.append(f"目前市值 {holding.current_value:.2f}")
-        if holding.weight_pct is not None:
+        if include_weight and holding.weight_pct is not None:
             pieces.append(f"權重 {holding.weight_pct:.2f}%")
         if holding.return_pct is not None:
             pieces.append(f"報酬 {holding.return_pct:.2f}%")
@@ -444,9 +512,11 @@ def _format_holding_line(holding: PortfolioContextHolding, *, language: str) -> 
         f"{holding.shares:g} shares" if holding.shares is not None else "shares missing",
         f"average cost {holding.avg_cost:.2f}" if holding.avg_cost is not None else "cost missing",
     ]
+    if holding.cost_basis is not None:
+        pieces.append(f"cost basis {holding.cost_basis:.2f}")
     if holding.current_value is not None:
         pieces.append(f"current value {holding.current_value:.2f}")
-    if holding.weight_pct is not None:
+    if include_weight and holding.weight_pct is not None:
         pieces.append(f"weight {holding.weight_pct:.2f}%")
     if holding.return_pct is not None:
         pieces.append(f"return {holding.return_pct:.2f}%")
@@ -463,6 +533,189 @@ def _missing_price_caveat(language: str) -> str:
         "Some holdings are missing current price or current value; this can only use "
         "cost-basis exposure, not current allocation or current concentration."
     )
+
+
+def _format_missing_price_for_ticker(ticker: str, *, language: str) -> str:
+    if language == "zh":
+        return (
+            f"目前無法取得 {ticker} 的現價，因此無法計算其持有現值、"
+            "未實現報酬與目前權重。"
+        )
+    return (
+        f"Current price was unavailable for {ticker}, so current value, "
+        "unrealized return, and current portfolio weight could not be calculated."
+    )
+
+
+def _format_news_unavailable(ticker: str | None, *, language: str) -> str:
+    if language == "zh":
+        if ticker:
+            return f"新聞工具目前未取得 {ticker} 的可用近期新聞。"
+        return "新聞工具目前未取得可用的近期新聞。"
+    if ticker:
+        return f"No recent news evidence was available for {ticker} from the current provider."
+    return "No recent news evidence was available from the current provider."
+
+
+def _format_earnings_unavailable(ticker: str | None, *, language: str) -> str:
+    if language == "zh":
+        if ticker:
+            return f"目前無法取得 {ticker} 的可靠財報時間，因此不會猜測財報日期或數字。"
+        return "目前無法取得可靠財報時間，因此不會猜測財報日期或數字。"
+    if ticker:
+        return f"Earnings timing was unavailable for {ticker}; no dates or figures were inferred."
+    return "Earnings timing was unavailable; no dates or figures were inferred."
+
+
+def _format_signal_unavailable(ticker: str | None, *, language: str) -> str:
+    if language == "zh":
+        if ticker:
+            return f"目前無法取得 {ticker} 的相對訊號，因此不會加入訊號結論。"
+        return "目前無法取得相對訊號，因此不會加入訊號結論。"
+    if ticker:
+        return f"Signal evidence was unavailable for {ticker}, so no signal conclusion was added."
+    return "Signal evidence was unavailable, so no signal conclusion was added."
+
+
+def _format_signal_low_confidence(ticker: str | None, *, language: str) -> str:
+    if language == "zh":
+        if ticker:
+            return f"{ticker} 的相對訊號信心偏低，請只把它當作輔助檢查。"
+        return "相對訊號信心偏低，請只把它當作輔助檢查。"
+    if ticker:
+        return f"Signal confidence was low for {ticker}; treat it as a secondary check."
+    return "Signal confidence was low; treat it as a secondary check."
+
+
+def _format_missing_cost_basis(ticker: str | None, *, language: str) -> str:
+    if language == "zh":
+        if ticker:
+            return f"{ticker} 缺少平均成本或股數，因此無法計算成本基礎。"
+        return "部分持股缺少平均成本或股數，因此無法計算成本基礎。"
+    if ticker:
+        return f"{ticker} is missing average cost or shares, so cost basis could not be calculated."
+    return (
+        "Some holdings are missing average cost or shares, so cost basis could "
+        "not be calculated."
+    )
+
+
+def _format_dividend_missing(*, language: str) -> str:
+    if language == "zh":
+        return "部分持股缺少股息資料，因此收益品質只能作為估算檢查。"
+    return "Some holdings are missing dividend data, so income quality is only an estimate."
+
+
+def _format_classification_incomplete(*, language: str) -> str:
+    if language == "zh":
+        return "部分持股缺少資產類型或分類資料，因此防禦型配置判讀只能作為粗略檢查。"
+    return (
+        "Some holdings are missing asset type or classification data, so defensive "
+        "allocation conclusions are only rough checks."
+    )
+
+
+def _format_allocation_incomplete(*, language: str) -> str:
+    if language == "zh":
+        return "目前無法完整計算持股權重，因部分持股缺少現價。"
+    return (
+        "Current portfolio weights could not be calculated completely because "
+        "some holdings lack current prices."
+    )
+
+
+def _extract_caveat_ticker(message: str) -> str | None:
+    for token in message.replace("(", " ").replace(")", " ").replace("。", " ").split():
+        cleaned = token.strip(".,;:，；：")
+        if "." in cleaned or any(char.isdigit() for char in cleaned):
+            if len(cleaned) <= 12:
+                return cleaned
+    return None
+
+
+def _normalise_caveat_message(message: str, *, language: str) -> tuple[str, str]:
+    lowered = message.lower()
+    ticker = _extract_caveat_ticker(message)
+
+    if "current price evidence was unavailable" in lowered:
+        key = f"missing_price:{ticker or '*'}"
+        return key, _format_missing_price_for_ticker(ticker or "this holding", language=language)
+    if "missing current value and price/shares" in lowered:
+        key = "missing_price:*"
+        return key, _missing_price_caveat(language)
+    if (
+        "recent news evidence was unavailable" in lowered
+        or "recent news coverage was limited" in lowered
+    ):
+        key = f"news_unavailable:{ticker or '*'}"
+        return key, _format_news_unavailable(ticker, language=language)
+    if "earnings timing was unavailable" in lowered:
+        key = f"earnings_unavailable:{ticker or '*'}"
+        return key, _format_earnings_unavailable(ticker, language=language)
+    if "signal evidence was unavailable" in lowered:
+        key = f"signal_unavailable:{ticker or '*'}"
+        return key, _format_signal_unavailable(ticker, language=language)
+    if "signal confidence was low" in lowered or "low confidence" in lowered:
+        key = f"signal_low:{ticker or '*'}"
+        return key, _format_signal_low_confidence(ticker, language=language)
+    if "missing average cost or shares" in lowered:
+        key = f"missing_cost_basis:{ticker or '*'}"
+        return key, _format_missing_cost_basis(ticker, language=language)
+    if "dividend" in lowered or "income" in lowered or "股息" in message or "配息" in message:
+        return "missing_dividend:*", _format_dividend_missing(language=language)
+    if "classification data was incomplete" in lowered:
+        return "classification_incomplete:*", _format_classification_incomplete(
+            language=language
+        )
+    if "portfolio allocation coverage was incomplete" in lowered:
+        return "allocation_incomplete:*", _format_allocation_incomplete(
+            language=language
+        )
+    if "short history" in lowered or "insufficient history" in lowered:
+        if language == "zh":
+            return "short_history:*", "市場歷史資料不足，因此相對訊號或技術特徵信心較低。"
+        return (
+            "short_history:*",
+            "Market history was short, so signal or technical evidence has lower confidence.",
+        )
+    if "provider" in lowered or "unavailable" in lowered:
+        if language == "zh":
+            return f"provider:{ticker or message}", "部分資料供應商目前沒有回傳完整資料。"
+        return (
+            f"provider:{ticker or message}",
+            "One or more data providers did not return complete evidence.",
+        )
+    return f"raw:{message}", message
+
+
+def _build_user_caveats(
+    context: PortfolioContext,
+    evidence_caveats: list[str],
+    *,
+    language: str,
+) -> list[str]:
+    keyed: dict[str, str] = {}
+
+    missing_price_tickers = [
+        holding.ticker
+        for holding in context.holdings
+        if holding.current_price is None and holding.current_value is None
+    ]
+    for ticker in missing_price_tickers:
+        keyed[f"missing_price:{ticker}"] = _format_missing_price_for_ticker(
+            ticker,
+            language=language,
+        )
+
+    for message in [*context.data_caveats, *evidence_caveats]:
+        key, formatted = _normalise_caveat_message(message, language=language)
+        if key == "missing_price:*" and missing_price_tickers:
+            continue
+        if key.startswith("raw:") and formatted in keyed.values():
+            continue
+        keyed.setdefault(key, formatted)
+
+    return list(keyed.values())
 
 
 def _cost_basis_exposure_lines(context: PortfolioContext, *, language: str) -> list[str]:
@@ -505,13 +758,16 @@ def _build_evidence_bundle(
 ) -> PortfolioChatEvidenceBundle:
     return PortfolioChatEvidenceBundle(
         portfolio_context=context,
+        coverage=context.coverage,
         market_data=evidence.market_data,
         calculations=_calculation_map(context),
         news=evidence.news,
         earnings=evidence.earnings,
         signals=evidence.signals,
         tool_errors=evidence.tools_failed,
-        data_caveats=sorted(set([*context.data_caveats, *evidence.caveats])),
+        data_caveats=evidence.user_caveats or _dedupe_preserve_order(
+            [*context.data_caveats, *evidence.caveats]
+        ),
         generated_at=datetime.now(timezone.utc),
     )
 
@@ -551,23 +807,11 @@ def _build_answer(
     named_tickers = named_tickers or []
     evidence_caveats = evidence_caveats or []
     review_items = context.suggested_review_items[:4]
-    has_current_values = _has_current_value_data(context)
-    missing_price = _has_missing_price_data(context)
-    caveat_lines = list(context.data_caveats) + evidence_caveats
+    has_current_values = _has_complete_allocation(context)
+    user_caveats = _build_user_caveats(context, evidence_caveats, language=language)
 
-    def zh_caveats() -> list[str]:
-        lines = []
-        if missing_price:
-            lines.append(f"- {_missing_price_caveat('zh')}")
-        lines.extend(f"- {item}" for item in caveat_lines[:4])
-        return lines
-
-    def en_caveats() -> list[str]:
-        lines = []
-        if missing_price:
-            lines.append(f"- {_missing_price_caveat('en')}")
-        lines.extend(f"- {item}" for item in caveat_lines[:4])
-        return lines
+    def formatted_caveats() -> list[str]:
+        return [f"- {item}" for item in user_caveats[:6]]
 
     if language == "zh":
         if intent == "portfolio_concentration":
@@ -579,7 +823,10 @@ def _build_answer(
                 headline = f"集中度判讀：{context.concentration_summary}"
             else:
                 exposure_lines = _cost_basis_exposure_lines(context, language="zh")
-                headline = "集中度判讀：目前缺少市價，因此先用成本基礎占比檢視。"
+                headline = (
+                    "集中度判讀：目前無法可靠計算完整投資組合權重，"
+                    "因為部分重要持股缺少現價；以下改用成本基礎占比檢視。"
+                )
             return "\n".join(
                 [
                     "結論：你的投資組合集中度值得檢視，但需要區分目前市值占比與成本基礎占比。",
@@ -588,7 +835,7 @@ def _build_answer(
                     *exposure_lines,
                     "情境下一步：如果要更保守，可以接著模擬最大持股下跌 15% 的影響。",
                     "資料限制：",
-                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                    *(formatted_caveats() or ["- 目前沒有額外資料限制。"]),
                 ]
             )
 
@@ -597,14 +844,25 @@ def _build_answer(
                 item for item in context.holdings if item.ticker in set(named_tickers)
             ] or context.top_holdings[:2]
             lines = [f"- {_format_holding_line(item, language='zh')}" for item in requested]
+            reliable_lines = _cost_basis_exposure_lines(context, language="zh")
             return "\n".join(
                 [
                     "比較重點：我會先比較你問到的持股在組合中的角色與資料完整性。",
+                    (
+                        "目前無法可靠計算完整投資組合權重；若只有部分持股有現價，"
+                        "不能把有價格的 subset 視為完整配置。"
+                    )
+                    if not has_current_values
+                    else "目前價格資料完整，因此可以比較目前權重。",
                     "持股比較：",
                     *lines,
-                    "解讀：如果缺少目前價格，這裡不會推論目前權重；只能先看股數、成本與成本基礎。",
+                    "可可靠計算的內容：",
+                    *(reliable_lines or ["- 目前缺少成本基礎資料。"]),
+                    "暫時無法可靠計算：完整目前權重、完整集中度、總現值與總未實現損益。"
+                    if not has_current_values
+                    else "目前可比較完整權重與持股損益。",
                     "資料限制：",
-                    *(zh_caveats() or ["- 新聞、財報或訊號若不可用，不會被編入結論。"]),
+                    *(formatted_caveats() or ["- 新聞、財報或訊號若不可用，不會被編入結論。"]),
                 ]
             )
 
@@ -618,27 +876,46 @@ def _build_answer(
                     "目前表現檢視：以下數字來自工具或你提供的目前價格，不由模型自行計算。",
                     *lines,
                     "資料限制：",
-                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                    *(formatted_caveats() or ["- 目前沒有額外資料限制。"]),
                 ]
             )
 
         if intent == "news_review":
+            exposure_lines = (
+                _cost_basis_exposure_lines(context, language="zh")
+                if not has_current_values
+                else [
+                    f"- {_format_holding_line(item, language='zh')}"
+                    for item in context.top_holdings[:3]
+                ]
+            )
             return "\n".join(
                 [
-                    "新聞檢視：只會引用工具取得的新聞資料；如果新聞不可用，不會補編內容。",
-                    "目前可用結論：請以 evidence_used 和資料限制為準。",
+                    "新聞檢視：我會先使用已知持股與可用工具證據；新聞不可用時不會補編內容。",
+                    "目前仍可用的投資組合脈絡：",
+                    *exposure_lines,
+                    "建議追蹤：先看權重或成本投入較高的持股，再等新聞工具恢復後補查近期事件。",
                     "資料限制：",
-                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                    *(formatted_caveats() or ["- 目前沒有額外資料限制。"]),
                 ]
             )
 
         if intent == "earnings_review":
+            earnings_holdings = (
+                context.top_holdings[:3] if has_current_values else context.holdings[:3]
+            )
+            exposure_lines = [
+                f"- {_format_holding_line(item, language='zh')}"
+                for item in earnings_holdings
+            ]
             return "\n".join(
                 [
                     "財報檢視：若工具沒有確認日期或財務數字，這裡不會猜測 Q2 或其他財報資訊。",
-                    "目前可用結論：先檢查財報日期缺口，再把事件風險和持股權重一起看。",
+                    "目前仍可用的持股脈絡：",
+                    *exposure_lines,
+                    "建議追蹤：等財報工具有資料後，再把事件風險和目前權重一起看。",
                     "資料限制：",
-                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                    *(formatted_caveats() or ["- 目前沒有額外資料限制。"]),
                 ]
             )
 
@@ -655,7 +932,10 @@ def _build_answer(
                         "15% 的情境，看哪一檔對組合影響最大。"
                     ),
                     "資料限制：",
-                    *(zh_caveats() or ["- 若沒有即時價格，壓力測試只能使用你輸入的價值基準。"]),
+                    *(
+                        formatted_caveats()
+                        or ["- 若沒有即時價格，壓力測試只能使用你輸入的價值基準。"]
+                    ),
                 ]
             )
 
@@ -669,7 +949,7 @@ def _build_answer(
                     "優先檢查順序：我會以集中度、未實現虧損、資料缺口與監控訊號排序。",
                     *review_lines,
                     "資料限制：",
-                    *(zh_caveats() or ["- 目前沒有額外資料限制。"]),
+                    *(formatted_caveats() or ["- 目前沒有額外資料限制。"]),
                 ]
             )
 
@@ -682,7 +962,7 @@ def _build_answer(
                     "- 檢查是否有持股缺少股息資料。",
                     "- 檢查預估收益是否集中在單一 ETF 或單一股票。",
                     "資料限制：",
-                    *(zh_caveats() or ["- 若沒有股息輸入或工具資料，收益估算會偏保守。"]),
+                    *(formatted_caveats() or ["- 若沒有股息輸入或工具資料，收益估算會偏保守。"]),
                 ]
             )
 
@@ -695,7 +975,7 @@ def _build_answer(
                 "持股整理：以下是目前投資組合記憶中的完整持股。",
                 *holding_lines,
                 "資料限制：",
-                *(zh_caveats() or ["- 沒有市價時，不會推論目前報酬或目前配置。"]),
+                *(formatted_caveats() or ["- 沒有市價時，不會推論目前報酬或目前配置。"]),
             ]
         )
 
@@ -709,8 +989,9 @@ def _build_answer(
         else:
             exposure_lines = _cost_basis_exposure_lines(context, language="en")
             headline = (
-                "Concentration read: current prices are missing, so this uses "
-                "cost-basis exposure."
+                "Concentration read: full current portfolio weights cannot be "
+                "calculated reliably because some material holdings lack current "
+                "prices; this uses cost-basis exposure instead."
             )
         return "\n".join(
             [
@@ -722,7 +1003,7 @@ def _build_answer(
                 "Largest exposures:",
                 *exposure_lines,
                 "Data caveats:",
-                *(en_caveats() or ["- No additional data caveats."]),
+                *(formatted_caveats() or ["- No additional data caveats."]),
             ]
         )
 
@@ -731,18 +1012,32 @@ def _build_answer(
             item for item in context.holdings if item.ticker in set(named_tickers)
         ] or context.top_holdings[:2]
         lines = [f"- {_format_holding_line(item, language='en')}" for item in requested]
+        reliable_lines = _cost_basis_exposure_lines(context, language="en")
         return "\n".join(
             [
                 "Comparison focus: compare the requested holdings by role, size, and data quality.",
+                (
+                    "Full current portfolio weights are unavailable because at least "
+                    "one material holding lacks a current price."
+                )
+                if not has_current_values
+                else "Current price coverage is complete, so current weights can be compared.",
                 "Holding comparison:",
                 *lines,
+                "Reliable calculations:",
+                *(reliable_lines or ["- Cost-basis data is incomplete."]),
                 (
-                    "Interpretation: if current prices are missing, this does not "
-                    "infer current weights."
+                    "Temporarily unavailable: complete current allocation, full "
+                    "concentration, total current value, and total unrealized P/L."
+                )
+                if not has_current_values
+                else (
+                    "Current allocation and unrealized P/L are available from "
+                    "supplied or fetched prices."
                 ),
                 "Data caveats:",
                 *(
-                    en_caveats()
+                    formatted_caveats()
                     or [
                         "- News, earnings, or signal evidence was not fabricated "
                         "when unavailable."
@@ -762,33 +1057,52 @@ def _build_answer(
                 "not model arithmetic.",
                 *lines,
                 "Data caveats:",
-                *(en_caveats() or ["- No additional data caveats."]),
+                *(formatted_caveats() or ["- No additional data caveats."]),
             ]
         )
 
     if intent == "news_review":
+        exposure_lines = (
+            _cost_basis_exposure_lines(context, language="en")
+            if not has_current_values
+            else [
+                f"- {_format_holding_line(item, language='en')}"
+                for item in context.top_holdings[:3]
+            ]
+        )
         return "\n".join(
             [
                 (
-                    "News review: only tool-retrieved articles are used; "
-                    "missing news is not fabricated."
+                    "News review: use known portfolio context first; "
+                    "tool-missing news is not fabricated."
                 ),
-                "Available conclusion: rely on evidence_used and data caveats for coverage.",
+                "Portfolio context still available:",
+                *exposure_lines,
+                (
+                    "Suggested check: monitor the largest exposures first, then "
+                    "refresh news evidence later."
+                ),
                 "Data caveats:",
-                *(en_caveats() or ["- No additional data caveats."]),
+                *(formatted_caveats() or ["- No additional data caveats."]),
             ]
         )
 
     if intent == "earnings_review":
+        exposure_lines = [
+            f"- {_format_holding_line(item, language='en')}"
+            for item in (context.top_holdings[:3] if has_current_values else context.holdings[:3])
+        ]
         return "\n".join(
             [
                 (
                     "Earnings review: if confirmed dates or metrics are unavailable, "
                     "they are not guessed."
                 ),
-                "Available conclusion: review earnings date gaps alongside portfolio weights.",
+                "Portfolio context still available:",
+                *exposure_lines,
+                "Suggested check: refresh earnings evidence before making any event-risk review.",
                 "Data caveats:",
-                *(en_caveats() or ["- No additional data caveats."]),
+                *(formatted_caveats() or ["- No additional data caveats."]),
             ]
         )
 
@@ -806,7 +1120,7 @@ def _build_answer(
                 ),
                 "Data caveats:",
                 *(
-                    en_caveats()
+                    formatted_caveats()
                     or [
                         "- Without live prices, stress testing can only use "
                         "user-provided value assumptions."
@@ -831,7 +1145,7 @@ def _build_answer(
                 ),
                 *review_lines,
                 "Data caveats:",
-                *(en_caveats() or ["- No additional data caveats."]),
+                *(formatted_caveats() or ["- No additional data caveats."]),
             ]
         )
 
@@ -848,7 +1162,7 @@ def _build_answer(
                 "- Review whether estimated income depends too heavily on one ETF or stock.",
                 "Data caveats:",
                 *(
-                    en_caveats()
+                    formatted_caveats()
                     or [
                         "- If dividend data is missing, income estimates may be "
                         "conservative."
@@ -867,7 +1181,7 @@ def _build_answer(
             *holding_lines,
             "Data caveats:",
             *(
-                en_caveats()
+                formatted_caveats()
                 or [
                     "- Without prices, current return and current allocation are "
                     "not inferred."
@@ -908,7 +1222,23 @@ Do not add a reminder to save the workspace unless the user explicitly asks how 
 Do not invent current prices, current values, news, earnings dates, signal scores, or dividends.
 Do not recalculate numeric values; use the calculations field exactly.
 Preserve all provided numeric values exactly.
-If market data, news, earnings, or signal evidence is missing, state that limitation clearly.
+Lead with the strongest available portfolio evidence: saved holdings, shares,
+average cost, cost basis, current market data if present, portfolio intelligence,
+signal evidence, news, then earnings.
+Do not lead with tool errors unless no usable portfolio context exists.
+Use partial evidence productively.
+If current prices are missing, use cost-basis exposure only and never describe it
+as current allocation, current concentration, current return, or current weight.
+Never describe a priced subset as the full portfolio.
+Never calculate full allocation when any material holding lacks current value.
+Never say a holding is 100% of the portfolio unless coverage.allocation_complete is true.
+Distinguish current-value weight from cost-basis exposure.
+If price coverage is incomplete, state that full allocation is unavailable.
+Do not present defensive allocation as reliable when classification or
+current-value coverage is incomplete.
+If market data, news, earnings, or signal evidence is missing, mention the
+deduplicated limitation once near the end.
+Do not repeat caveats.
 Do not claim news, earnings, or signal conclusions unless those sections contain evidence.
 Make the response specific to the detected intent and the user's question.
 Use review-oriented language such as review, monitor, concentration, scenario, and risk threshold.
@@ -937,6 +1267,7 @@ Write a concise, friendly answer that:
 - uses a structure appropriate for the detected intent
 - summarizes only evidence that is present
 - highlights 2-4 review or monitoring items
+- includes data limitations once at the end
 - ends with a short non-advisory reminder
 """
     )
@@ -1192,6 +1523,18 @@ class PortfolioContextBuilder:
             resolved.portfolio,
             enrichment=evidence.enrichment,
         )
+        data_caveats = list(analysis.missing_data)
+        incomplete_classification = any(
+            not (holding.asset_type or holding.category)
+            for holding in resolved.portfolio.holdings
+        )
+        if incomplete_classification and any(
+            "Defensive allocation" in flag for flag in analysis.risk_flags
+        ):
+            data_caveats.append(
+                "Portfolio classification data was incomplete, so defensive "
+                "allocation conclusions are only rough checks."
+            )
         context_holdings = [
             _holding_to_context_holding(
                 holding_input,
@@ -1203,27 +1546,86 @@ class PortfolioContextBuilder:
                 strict=False,
             )
         ]
+        coverage = _build_coverage_snapshot(context_holdings, resolved.portfolio.holdings)
+        allocation_complete = coverage.allocation_complete
+        if not allocation_complete:
+            data_caveats.append(
+                "Portfolio allocation coverage was incomplete because some "
+                "material holdings lack current prices."
+            )
+            context_holdings = [
+                holding.model_copy(update={"weight_pct": None})
+                for holding in context_holdings
+            ]
+
         top_holdings = sorted(
             context_holdings,
-            key=lambda item: item.weight_pct or 0.0,
+            key=(
+                (lambda item: item.weight_pct or 0.0)
+                if allocation_complete
+                else (lambda item: item.cost_basis or 0.0)
+            ),
             reverse=True,
         )[:5]
         review_items: list[ReviewItem] = []
         if analysis.portfolio_intelligence is not None:
             review_items = analysis.portfolio_intelligence.suggested_review_items
+        if not allocation_complete:
+            review_items = [
+                item
+                for item in review_items
+                if not any("concentration." in key for key in item.evidence_keys)
+            ]
+            review_items.insert(
+                0,
+                ReviewItem(
+                    title="Review incomplete current allocation coverage",
+                    reason=(
+                        "Current portfolio weights could not be calculated "
+                        "completely because some material holdings lack current prices."
+                    ),
+                    evidence_keys=["coverage.allocation_complete"],
+                    severity="medium",
+                ),
+            )
+        risk_flags = analysis.risk_flags
+        if not allocation_complete:
+            risk_flags = [
+                flag
+                for flag in risk_flags
+                if "concentration" not in flag.lower()
+            ]
+        if incomplete_classification or not allocation_complete:
+            risk_flags = [
+                flag
+                for flag in risk_flags
+                if "defensive allocation" not in flag.lower()
+            ]
 
         return PortfolioContext(
-            total_current_value=analysis.total_current_value,
+            total_current_value=(
+                analysis.total_current_value if allocation_complete else None
+            ),
             total_cost_basis=analysis.total_cost_basis,
-            total_unrealized_gain_loss=analysis.total_unrealized_gain_loss,
-            total_return_pct=analysis.total_return_pct,
+            total_unrealized_gain_loss=(
+                analysis.total_unrealized_gain_loss if allocation_complete else None
+            ),
+            total_return_pct=analysis.total_return_pct if allocation_complete else None,
             top_holdings=top_holdings,
-            risk_flags=analysis.risk_flags,
+            risk_flags=risk_flags,
             suggested_review_items=review_items,
-            concentration_summary=_summarise_concentration(analysis),
+            concentration_summary=(
+                _summarise_concentration(analysis)
+                if allocation_complete
+                else (
+                    "Current allocation is incomplete because one or more "
+                    "material holdings lack current prices."
+                )
+            ),
             income_summary=_summarise_income(analysis),
             holdings=context_holdings,
-            data_caveats=sorted(set([*analysis.missing_data, *evidence.caveats])),
+            data_caveats=sorted(set([*data_caveats, *evidence.caveats])),
+            coverage=coverage,
         )
 
     def build_response(self, request: PortfolioChatRequest) -> PortfolioChatResponse:
@@ -1235,6 +1637,15 @@ class PortfolioContextBuilder:
             request.model_copy(update={"portfolio": resolved.portfolio}),
             evidence=evidence,
         )
+        caveats_before_dedup = [*context.data_caveats, *evidence.caveats]
+        user_caveats = _build_user_caveats(
+            context,
+            evidence.caveats,
+            language=language,
+        )
+        evidence.caveats_before_dedup = caveats_before_dedup
+        evidence.user_caveats = user_caveats
+        context = context.model_copy(update={"data_caveats": user_caveats})
         evidence.bundle = _build_evidence_bundle(context, evidence)
         generation = _build_llm_answer(
             request.question,
@@ -1242,7 +1653,7 @@ class PortfolioContextBuilder:
             language=language,
             intent=evidence.intent,
             named_tickers=evidence.named_tickers,
-            evidence_caveats=evidence.caveats,
+            evidence_caveats=user_caveats,
         )
         if generation.answer and _has_grounding_violation(generation.answer):
             logger.warning(
@@ -1285,6 +1696,18 @@ class PortfolioContextBuilder:
             "tools_succeeded": evidence.tools_succeeded,
             "tools_failed": evidence.tools_failed,
             "data_as_of": evidence.data_as_of,
+            "evidence_available": _dedupe_preserve_order(
+                [
+                    *evidence.evidence_used,
+                    *list(evidence.market_data.keys()),
+                    *list(evidence.signals.keys()),
+                    *list(evidence.news.keys()),
+                    *list(evidence.earnings.keys()),
+                ]
+            ),
+            "evidence_missing": evidence.tools_failed,
+            "caveats_before_dedup": caveats_before_dedup,
+            "caveats_after_dedup": user_caveats,
         }
         logger.info(
             "Portfolio chat generation completed",
@@ -1306,7 +1729,7 @@ class PortfolioContextBuilder:
                 language=language,
                 intent=evidence.intent,
                 named_tickers=evidence.named_tickers,
-                evidence_caveats=evidence.caveats,
+                evidence_caveats=user_caveats,
             ),
             portfolio_context=context,
             evidence_used=_dedupe_preserve_order(evidence_used),

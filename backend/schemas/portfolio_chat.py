@@ -22,6 +22,22 @@ class PortfolioContextHolding(BaseModel):
     weight_pct: float | None = None
 
 
+class PortfolioCoverageSnapshot(BaseModel):
+    total_holdings_count: int = 0
+    priced_holdings_count: int = 0
+    unpriced_holdings_count: int = 0
+    classified_holdings_count: int = 0
+    unclassified_holdings_count: int = 0
+    priced_current_value: float | None = None
+    priced_cost_basis: float | None = None
+    total_cost_basis: float | None = None
+    current_price_coverage_pct_by_count: float | None = None
+    current_price_coverage_pct_by_cost_basis: float | None = None
+    classification_coverage_pct: float | None = None
+    allocation_complete: bool = False
+    classification_complete: bool = False
+
+
 class PortfolioContext(BaseModel):
     total_current_value: float | None = None
     total_cost_basis: float | None = None
@@ -34,6 +50,7 @@ class PortfolioContext(BaseModel):
     income_summary: str = ""
     holdings: list[PortfolioContextHolding] = Field(default_factory=list)
     data_caveats: list[str] = Field(default_factory=list)
+    coverage: PortfolioCoverageSnapshot = Field(default_factory=PortfolioCoverageSnapshot)
 
 
 class MarketEvidence(BaseModel):
@@ -90,6 +107,7 @@ class SignalEvidence(BaseModel):
 
 class PortfolioChatEvidenceBundle(BaseModel):
     portfolio_context: PortfolioContext
+    coverage: PortfolioCoverageSnapshot = Field(default_factory=PortfolioCoverageSnapshot)
     market_data: dict[str, MarketEvidence] = Field(default_factory=dict)
     calculations: dict[str, HoldingCalculation] = Field(default_factory=dict)
     news: dict[str, list[NewsEvidence]] = Field(default_factory=dict)

@@ -7,6 +7,7 @@ from pathlib import Path
 
 try:
     from ..schemas.portfolio import (
+        HoldingInput,
         InvestorHistoryEntry,
         InvestorMemorySnapshot,
         InvestorProfile,
@@ -17,6 +18,7 @@ try:
     )
 except ImportError:
     from schemas.portfolio import (
+        HoldingInput,
         InvestorHistoryEntry,
         InvestorMemorySnapshot,
         InvestorProfile,
@@ -25,6 +27,85 @@ except ImportError:
         SavedPortfolioRecord,
         SavedPortfolioSummary,
     )
+
+KNOWN_HOLDING_ALIASES: dict[str, tuple[str, str]] = {
+    "我有中華": ("2204.TW", "中華"),
+    "我持有中華": ("2204.TW", "中華"),
+    "目前有中華": ("2204.TW", "中華"),
+    "另外有中華": ("2204.TW", "中華"),
+    "還有中華": ("2204.TW", "中華"),
+    "中華": ("2204.TW", "中華"),
+    "2204": ("2204.TW", "中華"),
+    "2204.TW": ("2204.TW", "中華"),
+    "兆利": ("3548.TW", "兆利"),
+    "3548": ("3548.TW", "兆利"),
+    "3548.TW": ("3548.TW", "兆利"),
+    "00878": ("00878.TW", "國泰永續高股息"),
+    "00878.TW": ("00878.TW", "國泰永續高股息"),
+}
+
+
+def _clean_alias(value: str | None) -> str:
+    if not value:
+        return ""
+    cleaned = value.strip()
+    for prefix in ("我有", "我持有", "目前有", "另外有", "還有", "以及", "和", "跟", "加上"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned.removeprefix(prefix).strip()
+            break
+    return cleaned
+
+
+def _normalize_known_holding(holding: HoldingInput) -> tuple[HoldingInput, bool]:
+    candidates = [
+        holding.ticker,
+        holding.name,
+        _clean_alias(holding.ticker),
+        _clean_alias(holding.name),
+    ]
+    mapping: tuple[str, str] | None = None
+    for candidate in candidates:
+        if not candidate:
+            continue
+        mapping = KNOWN_HOLDING_ALIASES.get(candidate.strip())
+        if mapping is not None:
+            break
+
+    if mapping is None:
+        return holding, False
+
+    ticker, display_name = mapping
+    changed = holding.ticker != ticker or holding.name != display_name
+    if not changed:
+        return holding, False
+
+    prior_label = holding.name or holding.ticker
+    note = f"Normalized from saved workspace alias '{prior_label}'."
+    notes = holding.notes
+    if notes:
+        if note not in notes:
+            notes = f"{notes} {note}"
+    else:
+        notes = note
+    return holding.model_copy(
+        update={
+            "ticker": ticker,
+            "name": display_name,
+            "notes": notes,
+        }
+    ), True
+
+
+def normalize_saved_portfolio(portfolio: PortfolioRequest) -> tuple[PortfolioRequest, bool]:
+    normalized_holdings: list[HoldingInput] = []
+    changed = False
+    for holding in portfolio.holdings:
+        normalized, holding_changed = _normalize_known_holding(holding)
+        normalized_holdings.append(normalized)
+        changed = changed or holding_changed
+    if not changed:
+        return portfolio, False
+    return portfolio.model_copy(update={"holdings": normalized_holdings}), True
 
 
 class PortfolioStore:
@@ -78,6 +159,7 @@ class PortfolioStore:
         *,
         name: str = "current",
     ) -> SavedPortfolioRecord:
+        portfolio, _ = normalize_saved_portfolio(portfolio)
         updated_at = datetime.now(timezone.utc).isoformat()
         payload_json = portfolio.model_dump_json()
         with self._connect() as conn:
@@ -106,10 +188,16 @@ class PortfolioStore:
             ).fetchone()
         if row is None:
             return None
+        portfolio, changed = normalize_saved_portfolio(
+            PortfolioRequest(**json.loads(row["payload_json"]))
+        )
+        if changed:
+            self.save_portfolio(portfolio, name=row["name"])
+            return self.load_portfolio(name)
         return SavedPortfolioRecord(
             name=row["name"],
             updated_at=datetime.fromisoformat(row["updated_at"]),
-            portfolio=PortfolioRequest(**json.loads(row["payload_json"])),
+            portfolio=portfolio,
         )
 
     def update_portfolio(
@@ -133,7 +221,9 @@ class PortfolioStore:
             ).fetchall()
         results: list[SavedPortfolioSummary] = []
         for row in rows:
-            payload = PortfolioRequest(**json.loads(row["payload_json"]))
+            payload, _ = normalize_saved_portfolio(
+                PortfolioRequest(**json.loads(row["payload_json"]))
+            )
             results.append(
                 SavedPortfolioSummary(
                     name=row["name"],
