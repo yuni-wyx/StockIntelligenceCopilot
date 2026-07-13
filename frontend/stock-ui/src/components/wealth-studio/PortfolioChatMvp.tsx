@@ -63,6 +63,76 @@ function formatHoldingZh(holding: HoldingInput): string {
   return `${holding.name || holding.ticker}：${shares} 股，平均成本 ${avgCost}`;
 }
 
+function ThinkingDots() {
+  return (
+    <span className="inline-flex items-center gap-1" aria-hidden="true">
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-200 [animation-delay:-0.24s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-200 [animation-delay:-0.12s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-200" />
+    </span>
+  );
+}
+
+function ChatAvatar({ role }: { role: PortfolioChatMessage["role"] }) {
+  const isUser = role === "user";
+  return (
+    <div
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+        isUser
+          ? "bg-white text-zinc-950"
+          : "border border-amber-200/35 bg-amber-200/10 text-amber-100"
+      }`}
+    >
+      {isUser ? "You" : "AI"}
+    </div>
+  );
+}
+
+function ChatBubble({ message }: { message: PortfolioChatMessage }) {
+  const isUser = message.role === "user";
+  return (
+    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
+      {!isUser ? <ChatAvatar role={message.role} /> : null}
+      <div
+        className={`max-w-[82%] whitespace-pre-line rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
+          isUser
+            ? "rounded-br-md bg-white text-zinc-950"
+            : "rounded-bl-md border border-white/10 bg-[#171512] text-zinc-200"
+        }`}
+      >
+        {message.body}
+      </div>
+      {isUser ? <ChatAvatar role={message.role} /> : null}
+    </div>
+  );
+}
+
+function ThinkingBubble({ isChinese }: { isChinese: boolean }) {
+  const steps = isChinese
+    ? ["讀取投資組合記憶", "檢查現價覆蓋率", "整理回答"]
+    : ["Reading portfolio memory", "Checking price coverage", "Preparing answer"];
+
+  return (
+    <div className="flex justify-start gap-3">
+      <ChatAvatar role="assistant" />
+      <div className="max-w-[82%] rounded-2xl rounded-bl-md border border-amber-200/20 bg-amber-200/10 px-4 py-3 text-sm text-amber-50 shadow-sm">
+        <div className="flex items-center gap-3 font-medium">
+          <span>{isChinese ? "正在思考" : "Thinking"}</span>
+          <ThinkingDots />
+        </div>
+        <div className="mt-3 space-y-1.5 text-xs leading-5 text-amber-50/75">
+          {steps.map((step) => (
+            <div key={step} className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-200/70" />
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PortfolioChatLoadingShell() {
   return (
     <main className="min-h-screen bg-[#0d0c0a] px-4 py-6 text-white sm:px-6">
@@ -76,7 +146,7 @@ export function PortfolioChatLoadingShell() {
           <div className="h-16 w-52 rounded-lg border border-white/10 bg-black/25" />
         </header>
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_16rem]">
-          <div className="min-h-[34rem] rounded-lg border border-white/10 bg-zinc-950/65 p-4">
+          <div className="min-h-[34rem] rounded-2xl border border-white/10 bg-zinc-950/65 p-4">
             <div className="space-y-4">
               <div className="h-4 w-40 rounded-full bg-white/10" />
               <div className="h-20 rounded-lg bg-white/5" />
@@ -85,8 +155,8 @@ export function PortfolioChatLoadingShell() {
             </div>
           </div>
           <aside className="space-y-4">
-            <div className="h-32 rounded-lg border border-white/10 bg-zinc-950/65" />
-            <div className="h-40 rounded-lg border border-white/10 bg-zinc-950/65" />
+            <div className="h-32 rounded-2xl border border-white/10 bg-zinc-950/65" />
+            <div className="h-40 rounded-2xl border border-white/10 bg-zinc-950/65" />
           </aside>
         </section>
       </div>
@@ -163,11 +233,12 @@ export function PortfolioChatMvp({
         </header>
 
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_16rem]">
-          <div className="flex min-h-[34rem] flex-col rounded-lg border border-white/10 bg-zinc-950/65">
-            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+          <div className="flex min-h-[34rem] flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/70 shadow-2xl shadow-black/25">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-4 py-3">
               <div>
-                <div className="text-sm font-semibold text-zinc-100">
-                  {copy.portfolioMemoryStatus}
+                <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                  <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,0.7)]" />
+                  <span>{copy.portfolioMemoryStatus}</span>
                 </div>
                 <div className="mt-0.5 text-xs text-zinc-500">
                   {hasSavedPortfolio
@@ -180,28 +251,15 @@ export function PortfolioChatMvp({
               </span>
             </div>
 
-            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5">
+            <div className="flex-1 space-y-5 overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.08),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent)] px-4 py-5">
               {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`max-w-[85%] whitespace-pre-line rounded-lg px-4 py-3 text-sm leading-6 ${
-                      message.role === "user"
-                        ? "bg-white text-black"
-                        : "border border-white/10 bg-black/30 text-zinc-200"
-                    }`}
-                  >
-                    {message.body}
-                  </div>
-                </div>
+                <ChatBubble key={message.id} message={message} />
               ))}
 
+              {loading ? <ThinkingBubble isChinese={isChinese} /> : null}
+
               {state === "CONFIRM_HOLDINGS" ? (
-                <div className="rounded-lg border border-amber-300/25 bg-amber-300/5 p-4">
+                <div className="ml-11 rounded-2xl border border-amber-300/25 bg-amber-300/5 p-4 shadow-sm">
                   <div className="text-sm font-semibold text-amber-100">
                     {copy.confirmHoldingsTitle}
                   </div>
@@ -242,7 +300,7 @@ export function PortfolioChatMvp({
               ) : null}
 
               {chatResponse ? (
-                <details className="rounded-lg border border-white/10 bg-black/25 p-4">
+                <details className="ml-11 rounded-2xl border border-white/10 bg-black/25 p-4">
                   <summary className="cursor-pointer text-sm font-semibold text-zinc-100">
                     {copy.portfolioChatEvidenceUsed}
                   </summary>
@@ -261,31 +319,52 @@ export function PortfolioChatMvp({
             </div>
 
             {error ? (
-              <div className="mx-4 mb-3 rounded-lg border border-rose-300/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              <div className="mx-4 mb-3 rounded-2xl border border-rose-300/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
                 {error}
               </div>
             ) : null}
 
-            <div className="border-t border-white/10 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="border-t border-white/10 bg-black/25 p-4">
+              <div className="mb-3 flex flex-wrap gap-2">
+                {starterPrompts.slice(0, 3).map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => onUsePrompt(prompt)}
+                    disabled={loading}
+                    className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-left text-xs leading-5 text-zinc-300 transition hover:border-amber-200/35 hover:text-amber-100 disabled:opacity-50"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-950/80 p-2 shadow-inner shadow-black/30 sm:flex-row sm:items-end">
                 <textarea
                   value={inputValue}
                   onChange={(event) => onInputChange(event.target.value)}
-                  rows={3}
+                  rows={2}
                   placeholder={
                     hasSavedPortfolio
                       ? copy.askAboutPortfolioPlaceholder
                       : copy.holdingsOnboardingPlaceholder
                   }
-                  className="min-h-24 flex-1 resize-y rounded-lg border border-white/10 bg-black/45 px-3 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-amber-200/50"
+                  className="min-h-16 flex-1 resize-y rounded-xl border border-transparent bg-transparent px-3 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-amber-200/30"
                 />
                 <button
                   type="button"
                   onClick={onSubmit}
                   disabled={!canSubmit}
-                  className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50 sm:w-36"
+                  className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50 sm:w-36"
                 >
-                  {loading ? copy.working : hasSavedPortfolio ? copy.askAboutMyPortfolio : copy.continueCta}
+                  {loading ? (
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <ThinkingDots />
+                    </span>
+                  ) : hasSavedPortfolio ? (
+                    copy.askAboutMyPortfolio
+                  ) : (
+                    copy.continueCta
+                  )}
                 </button>
               </div>
               <p className="mt-3 text-xs leading-5 text-zinc-500">
