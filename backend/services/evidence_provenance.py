@@ -23,7 +23,7 @@ UNSAFE_CERTAINTY_TERMS = (
 )
 
 FIELD_SOURCE_HINTS = {
-    "fundamental_summary": ("fundamentals", "analyst_signal", "signal"),
+    "fundamental_summary": ("filing", "fundamentals", "analyst_signal", "signal"),
     "bull_case": ("fundamentals", "analyst_signal", "news"),
     "bear_case": ("fundamentals", "news", "analyst_signal"),
     "recent_news_summary": ("news",),
@@ -299,8 +299,39 @@ def _extract_portfolio_sources(bundle: AgentEvidenceBundle) -> list[SourceMetada
     return sources
 
 
+def _extract_research_sources(bundle: AgentEvidenceBundle) -> list[SourceMetadata]:
+    payload = bundle.external_evidence.get("research_evidence")
+    if not isinstance(payload, dict):
+        return []
+    sources: list[SourceMetadata] = []
+    for raw_source in payload.get("sources", []):
+        if not isinstance(raw_source, dict) or not raw_source.get("source_id"):
+            continue
+        source = SourceMetadata(
+            source_id=raw_source["source_id"],
+            source_type="filing",
+            ticker=(payload.get("identity") or {}).get("symbol"),
+            provider=raw_source.get("provider"),
+            url=raw_source.get("source_url"),
+            published_at=raw_source.get("published_at"),
+            retrieved_at=raw_source.get("retrieved_at"),
+            source_tier=raw_source.get("source_tier"),
+            tool="sec_edgar",
+            confidence=1.0 if raw_source.get("source_tier") == "tier_1" else 0.8,
+            fields=["filing", "facts", "source_tier"],
+        )
+        sources.append(source)
+    return sources
+
+
 def extract_source_metadata(bundle: AgentEvidenceBundle) -> list[SourceMetadata]:
-    return _dedupe_sources([*_extract_legacy_sources(bundle), *_extract_portfolio_sources(bundle)])
+    return _dedupe_sources(
+        [
+            *_extract_legacy_sources(bundle),
+            *_extract_portfolio_sources(bundle),
+            *_extract_research_sources(bundle),
+        ]
+    )
 
 
 def _evidence_ids_for_field(field: str, sources: list[SourceMetadata]) -> list[str]:

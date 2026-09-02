@@ -18,6 +18,10 @@ class HoldingInput(BaseModel):
     asset_type: str | None = None
     category: str | None = None
     notes: str | None = None
+    buy_price: float | None = None
+    buy_date: str | None = None
+    sell_price: float | None = None
+    sell_date: str | None = None
 
 
 class PortfolioRequest(BaseModel):

@@ -10,6 +10,10 @@ export type HoldingInput = {
   asset_type?: string;
   category?: string;
   notes?: string;
+  buy_price?: number;
+  buy_date?: string;
+  sell_price?: number;
+  sell_date?: string;
 };
 
 export type EvidenceSource = {
@@ -465,15 +469,31 @@ export async function savePortfolio(payload: {
   name?: string;
   make_current?: boolean;
 }) {
-  const res = await fetch(buildApiUrl("/portfolio/save"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error("Failed to save portfolio.");
+  try {
+    const res = await fetch(buildApiUrl("/portfolio/save"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const data = (await res.json()) as { detail?: string; error?: string };
+        detail = data.detail || data.error || "";
+      } catch {
+        // Keep the HTTP status when the server does not return JSON.
+      }
+      throw new Error(`Failed to save portfolio (${res.status})${detail ? `: ${detail}` : "."}`);
+    }
+    return res.json();
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Failed to save portfolio (")) {
+      throw error;
+    }
+    throw new Error(
+      `Failed to save portfolio: ${error instanceof Error ? error.message : "network request failed"}`,
+    );
   }
-  return res.json();
 }
 
 export async function loadCurrentPortfolio() {

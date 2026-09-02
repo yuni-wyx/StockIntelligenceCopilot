@@ -25,8 +25,10 @@ try:
         ScenarioComparisonRequest,
         ScenarioRequest,
     )
+    from ..schemas.research import SecurityIdentity
     from ..services.evidence_provenance import build_claim_evidence, extract_source_metadata
     from ..services.portfolio_store import PortfolioStore
+    from ..services.research_evidence import load_fixture_research_evidence
     from .portfolio_orchestrator import (
         _compare_portfolio_scenarios_impl,
         _run_portfolio_scenario_impl,
@@ -58,8 +60,10 @@ except ImportError:
         ScenarioComparisonRequest,
         ScenarioRequest,
     )
+    from schemas.research import SecurityIdentity
     from services.evidence_provenance import build_claim_evidence, extract_source_metadata
     from services.portfolio_store import PortfolioStore
+    from services.research_evidence import load_fixture_research_evidence
 
 
 def _output_type_name(output: Any) -> str:
@@ -93,6 +97,12 @@ def _attach_evidence_audit(
             claim.model_dump(mode="json") for claim in unsupported_claims
         ],
         "confidence_score": confidence_score,
+        "research_data_gaps": (
+            (bundle.external_evidence.get("research_evidence") or {}).get("data_gaps", [])
+        ),
+        "research_conflicts": (
+            (bundle.external_evidence.get("research_evidence") or {}).get("conflicts", [])
+        ),
     }
 
 
@@ -187,11 +197,23 @@ def build_agent_evidence_from_aggregated_evidence(
         result.model_copy() if hasattr(result, "model_copy") else result
         for result in tool_results
     ]
+    identity = task.metadata.get("security_identity")
+    ticker = task.tickers[0] if task.tickers else None
+    ticker_evidence = getattr(aggregated_evidence, "tickers_evidence", {}).get(ticker)
+    research_evidence = load_fixture_research_evidence(
+        SecurityIdentity.model_validate(identity) if isinstance(identity, dict) else None,
+        fundamentals=(
+            getattr(ticker_evidence, "fundamentals", None)
+            if ticker_evidence
+            else None
+        ),
+    )
     return AgentEvidenceBundle(
         context={
             "raw_query": raw_query,
             "tickers": task.tickers or plan.metadata.get("tickers", []),
             "task_type": task.task_type,
+            "security_identity": task.metadata.get("security_identity"),
         },
         derived_metrics={
             "analysis_focus": plan.summary,
@@ -210,6 +232,11 @@ def build_agent_evidence_from_aggregated_evidence(
                 ).items()
                 if getattr(ticker_evidence, "signal", None) is not None
             },
+            "research_evidence": (
+                research_evidence.model_dump(mode="json")
+                if research_evidence is not None
+                else None
+            ),
         },
         tool_results=serialized_results,
         legacy_evidence=aggregated_evidence,

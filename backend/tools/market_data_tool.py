@@ -7,17 +7,19 @@ Mock implementation — replace fetch_market_data() with real API calls.
 
 from __future__ import annotations
 
-import random
-from datetime import datetime
+from datetime import timezone
 from typing import Any, Dict, List
 
+import pandas as pd
 import yfinance as yf
 from langsmith import traceable
 from pydantic import BaseModel, Field
 
 try:
+    from ..config import PROVIDER_TIMEOUT_SECONDS
     from ..symbols import detect_market, normalize_symbol
 except ImportError:
+    from config import PROVIDER_TIMEOUT_SECONDS
     from symbols import detect_market, normalize_symbol
 
 
@@ -40,16 +42,16 @@ class OHLCBar(BaseModel):
 
 
 class TechnicalIndicators(BaseModel):
-    rsi_14: float = Field(..., description="14-day RSI (0–100).")
-    sma_20: float
-    sma_50: float
-    ema_12: float
-    ema_26: float
-    macd: float
-    macd_signal: float
-    bollinger_upper: float
-    bollinger_lower: float
-    atr_14: float = Field(..., description="14-day Average True Range.")
+    rsi_14: float | None = Field(None, description="14-day RSI (0–100).")
+    sma_20: float | None = None
+    sma_50: float | None = None
+    ema_12: float | None = None
+    ema_26: float | None = None
+    macd: float | None = None
+    macd_signal: float | None = None
+    bollinger_upper: float | None = None
+    bollinger_lower: float | None = None
+    atr_14: float | None = Field(None, description="14-day Average True Range.")
 
 
 class MarketDataResponse(BaseModel):
@@ -66,12 +68,13 @@ class MarketDataResponse(BaseModel):
     volume_today: int
     avg_volume_30d: int
     volume_ratio: float = Field(..., description="Today volume / 30-day avg.")
-    market_cap_billions: float
-    beta: float
-    week_52_high: float
-    week_52_low: float
+    market_cap_billions: float | None
+    beta: float | None
+    week_52_high: float | None
+    week_52_low: float | None
     ohlc_history: List[OHLCBar]
     technicals: TechnicalIndicators | None
+    data_caveats: List[str] = Field(default_factory=list)
 
 
 # ── Mock data registry ───────────────────────────────────────────────────────
@@ -93,12 +96,6 @@ def _seed_for(ticker: str) -> Dict[str, Any]:
     return _TICKER_SEEDS.get(ticker.upper(), _DEFAULT_SEED)
 
 
-def _deterministic_rand(ticker: str, salt: str, lo: float, hi: float) -> float:
-    """Deterministic pseudo-random float tied to ticker + salt."""
-    rng = random.Random(hash(ticker + salt))
-    return round(rng.uniform(lo, hi), 4)
-
-
 # ── Core mock implementation ─────────────────────────────────────────────────
 @traceable(name="market_data_tool", run_type="tool", tags=["tool", "market-data"])
 def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
@@ -109,7 +106,11 @@ def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
     market = detect_market(ticker)
     yf_ticker = yf.Ticker(ticker)
 
-    hist = yf_ticker.history(period="3mo", interval="1d")
+    hist = yf_ticker.history(
+        period="3mo",
+        interval="1d",
+        timeout=PROVIDER_TIMEOUT_SECONDS,
+    )
 
     if hist.empty:
         raise ValueError(f"No data found for ticker {ticker}")
@@ -151,10 +152,11 @@ def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
     # Info (fundamental-lite)
     info = yf_ticker.info
 
-    market_cap = info.get("marketCap", 0) / 1e9
-    beta = info.get("beta", 1.0)
-    week_52_high = info.get("fiftyTwoWeekHigh", current)
-    week_52_low = info.get("fiftyTwoWeekLow", current)
+    market_cap_raw = info.get("marketCap")
+    market_cap = float(market_cap_raw) / 1e9 if market_cap_raw is not None else None
+    beta = info.get("beta")
+    week_52_high = info.get("fiftyTwoWeekHigh")
+    week_52_low = info.get("fiftyTwoWeekLow")
 
     # Simple technicals
     closes = hist["Close"].tail(50)
@@ -166,16 +168,32 @@ def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
     ema_26 = round(closes.ewm(span=26).mean().iloc[-1], 2)
 
     macd = round(ema_12 - ema_26, 2)
-    macd_signal = round(macd * 0.8, 2)
+    macd_signal = round(
+        closes.ewm(span=12).mean().iloc[-1] - closes.ewm(span=26).mean().iloc[-1], 2
+    )
 
-    rsi = 50.0  # (簡化版，可之後升級)
-    atr = round(current * 0.02, 2)
+    deltas = closes.diff().dropna()
+    gains = deltas.clip(lower=0).rolling(14).mean()
+    losses = (-deltas.clip(upper=0)).rolling(14).mean()
+    rs = gains / losses.replace(0, float("nan"))
+    rsi_value = 100 - (100 / (1 + rs.iloc[-1])) if not rs.empty and pd.notna(rs.iloc[-1]) else None
 
-    bb_upper = round(sma_20 + 2 * atr, 2)
-    bb_lower = round(sma_20 - 2 * atr, 2)
+    true_range = pd.concat(
+        [
+            hist["High"] - hist["Low"],
+            (hist["High"] - hist["Close"].shift()).abs(),
+            (hist["Low"] - hist["Close"].shift()).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    atr_raw = true_range.rolling(14).mean().iloc[-1]
+    atr = round(float(atr_raw), 2) if pd.notna(atr_raw) else None
+
+    bb_upper = round(sma_20 + 2 * atr, 2) if atr is not None else None
+    bb_lower = round(sma_20 - 2 * atr, 2) if atr is not None else None
 
     technicals = TechnicalIndicators(
-        rsi_14=rsi,
+        rsi_14=round(float(rsi_value), 2) if rsi_value is not None else None,
         sma_20=sma_20,
         sma_50=sma_50,
         ema_12=ema_12,
@@ -190,7 +208,7 @@ def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
     return MarketDataResponse(
         ticker=ticker,
         market=market,
-        as_of=datetime.utcnow().isoformat(),
+        as_of=hist.index[-1].to_pydatetime().astimezone(timezone.utc).isoformat(),
         current_price=current,
         price_change_1d=change_1d,
         price_change_pct_1d=change_pct_1d,
@@ -201,10 +219,21 @@ def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
         volume_today=vol_today,
         avg_volume_30d=avg_vol_30,
         volume_ratio=vol_ratio,
-        market_cap_billions=round(market_cap, 2),
-        beta=beta,
-        week_52_high=week_52_high,
-        week_52_low=week_52_low,
+        market_cap_billions=round(market_cap, 2) if market_cap is not None else None,
+        beta=float(beta) if beta is not None else None,
+        week_52_high=float(week_52_high) if week_52_high is not None else None,
+        week_52_low=float(week_52_low) if week_52_low is not None else None,
         ohlc_history=ohlc,
         technicals=technicals,
+        data_caveats=[
+            "Market data is daily Yahoo Finance history; it is not a live quote.",
+            *(
+                ["Market capitalization, beta, or 52-week range was unavailable."]
+                if market_cap is None
+                or beta is None
+                or week_52_high is None
+                or week_52_low is None
+                else []
+            ),
+        ],
     )

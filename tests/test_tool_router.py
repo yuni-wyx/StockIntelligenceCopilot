@@ -58,6 +58,53 @@ class ToolRouterFundamentalsTest(unittest.TestCase):
         self.assertEqual(payload["competitive_advantages"], [])
         self.assertEqual(payload["key_risks"], [])
 
+    def test_transient_provider_failure_retries_then_succeeds(self) -> None:
+        from backend.schemas.planner_schema import ToolCallSpec, ToolName
+        from backend.services.tool_router import ToolRouter
+
+        spec = ToolCallSpec(
+            tool=ToolName.MARKET_DATA,
+            ticker="NVDA",
+            params={},
+            priority=1,
+            rationale="test retry",
+        )
+        handler = unittest.mock.Mock(side_effect=[ConnectionError("temporary"), {"ok": True}])
+        with patch.dict(
+            "backend.services.tool_router._HANDLERS", {ToolName.MARKET_DATA: handler}
+        ), patch(
+            "backend.services.tool_router.PROVIDER_MAX_RETRIES", 1
+        ), patch("backend.services.tool_router.time.sleep") as sleep:
+            result = ToolRouter()._dispatch(spec)
+
+        self.assertTrue(result.success)
+        self.assertEqual(handler.call_count, 2)
+        sleep.assert_called_once()
+
+    def test_non_transient_provider_failure_is_not_retried(self) -> None:
+        from backend.schemas.planner_schema import ToolCallSpec, ToolName
+        from backend.services.tool_router import ToolRouter
+
+        spec = ToolCallSpec(
+            tool=ToolName.MARKET_DATA,
+            ticker="NVDA",
+            params={},
+            priority=1,
+            rationale="test no retry",
+        )
+        handler = unittest.mock.Mock(side_effect=ValueError("invalid provider payload"))
+        with patch.dict(
+            "backend.services.tool_router._HANDLERS", {ToolName.MARKET_DATA: handler}
+        ), patch(
+            "backend.services.tool_router.PROVIDER_MAX_RETRIES", 3
+        ), patch("backend.services.tool_router.time.sleep") as sleep:
+            result = ToolRouter()._dispatch(spec)
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_category, "provider")
+        handler.assert_called_once()
+        sleep.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

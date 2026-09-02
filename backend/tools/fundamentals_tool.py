@@ -56,16 +56,16 @@ class BalanceSheetHighlights(BaseModel):
 
 
 class AnalystEstimates(BaseModel):
-    next_quarter_eps_est: float
-    next_year_eps_est: float
-    revenue_growth_est_1y: float
-    num_analysts: int
-    buy_ratings: int
-    hold_ratings: int
-    sell_ratings: int
-    mean_price_target: float
-    high_price_target: float
-    low_price_target: float
+    next_quarter_eps_est: float | None
+    next_year_eps_est: float | None
+    revenue_growth_est_1y: float | None
+    num_analysts: int | None
+    buy_ratings: int | None
+    hold_ratings: int | None
+    sell_ratings: int | None
+    mean_price_target: float | None
+    high_price_target: float | None
+    low_price_target: float | None
 
 
 class CompanyProfile(BaseModel):
@@ -92,6 +92,7 @@ class FundamentalsResponse(BaseModel):
     estimates: Optional[AnalystEstimates]
     competitive_advantages: List[str]
     key_risks: List[str]
+    data_caveats: List[str] = Field(default_factory=list)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -308,27 +309,30 @@ def fetch_fundamentals(request: FundamentalsRequest) -> FundamentalsResponse:
     # ---- Analyst estimates ----
     estimates: Optional[AnalystEstimates] = None
     if request.include_estimates:
-        rec_mean = _safe_float(info.get("recommendationMean"))
+        forward_eps = info.get("forwardEps")
+        target_mean = info.get("targetMeanPrice")
+        target_high = info.get("targetHighPrice")
+        target_low = info.get("targetLowPrice")
         num_analysts = _safe_int(info.get("numberOfAnalystOpinions"))
-
-        # Yahoo often has targets, but not always next-year EPS cleanly.
-        # We fill what exists and default the rest.
-        estimates = AnalystEstimates(
-            next_quarter_eps_est=round(_safe_float(info.get("forwardEps")), 2),
-            next_year_eps_est=round(_safe_float(info.get("forwardEps")), 2),
-            revenue_growth_est_1y=round(_safe_float(info.get("revenueGrowth")), 4),
-            num_analysts=num_analysts,
-            buy_ratings=(
-                max(num_analysts - 2, 0)
-                if rec_mean and rec_mean <= 2.0
-                else max(num_analysts // 2, 0)
-            ),
-            hold_ratings=2 if num_analysts >= 2 else 0,
-            sell_ratings=0 if rec_mean and rec_mean <= 3.0 else 1,
-            mean_price_target=round(_safe_float(info.get("targetMeanPrice")), 2),
-            high_price_target=round(_safe_float(info.get("targetHighPrice")), 2),
-            low_price_target=round(_safe_float(info.get("targetLowPrice")), 2),
-        )
+        if any(value is not None for value in (forward_eps, target_mean, target_high, target_low)):
+            estimates = AnalystEstimates(
+                next_quarter_eps_est=round(_safe_float(forward_eps), 2),
+                next_year_eps_est=round(_safe_float(forward_eps), 2),
+                revenue_growth_est_1y=round(_safe_float(info.get("revenueGrowth")), 4),
+                num_analysts=num_analysts,
+                buy_ratings=None,
+                hold_ratings=None,
+                sell_ratings=None,
+                mean_price_target=(
+                    round(_safe_float(target_mean), 2) if target_mean is not None else None
+                ),
+                high_price_target=(
+                    round(_safe_float(target_high), 2) if target_high is not None else None
+                ),
+                low_price_target=(
+                    round(_safe_float(target_low), 2) if target_low is not None else None
+                ),
+            )
 
     # ---- Qualitative fields ----
     competitive_advantages = _infer_competitive_advantages(info)
@@ -343,4 +347,12 @@ def fetch_fundamentals(request: FundamentalsRequest) -> FundamentalsResponse:
         estimates=estimates,
         competitive_advantages=competitive_advantages,
         key_risks=key_risks,
+        data_caveats=[
+            "Fundamentals are sourced from Yahoo Finance and may be delayed or incomplete.",
+            (
+                "Competitive advantages and key risks are heuristic labels, "
+                "not reported company facts."
+            ),
+            *(["Analyst estimates were unavailable."] if estimates is None else []),
+        ],
     )

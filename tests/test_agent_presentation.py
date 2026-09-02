@@ -167,6 +167,49 @@ class AgentPresentationTest(unittest.TestCase):
         self.assertGreaterEqual(len(unsupported), 2)
         self.assertTrue(any("guarantee" in item.reason for item in unsupported))
 
+    def test_all_provider_failures_return_http_502(self) -> None:
+        from backend.api.agent_presentation import agent_result_to_api_response
+        from backend.schemas.agent import (
+            AgentEvidenceBundle,
+            AgentPlan,
+            AgentResult,
+            AgentTask,
+            AgentTaskType,
+        )
+        from backend.schemas.evidence_schema import AggregatedEvidence, TickerEvidence
+        from backend.schemas.output_schema import StockResearchOutput
+
+        result = AgentResult(
+            task=AgentTask(
+                task_type=AgentTaskType.RESEARCH,
+                raw_query="research TSLA",
+                tickers=["TSLA"],
+            ),
+            plan=AgentPlan(task_type=AgentTaskType.RESEARCH, summary="Research TSLA"),
+            evidence=AgentEvidenceBundle(
+                legacy_evidence=AggregatedEvidence(
+                    mode="stock_research",
+                    tickers_evidence={"TSLA": TickerEvidence(ticker="TSLA")},
+                    total_tool_calls=2,
+                    successful_calls=0,
+                )
+            ),
+            output=StockResearchOutput(
+                ticker="TSLA",
+                fundamental_summary="Unavailable",
+                recent_news_summary="Unavailable",
+                bull_case="Unavailable",
+                bear_case="Unavailable",
+                what_to_watch_next=[],
+                overall_sentiment="NEUTRAL",
+            ),
+            output_type="StockResearchOutput",
+        )
+
+        response = agent_result_to_api_response(result)
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("no grounded result", response.body.decode())
+
 
 if __name__ == "__main__":
     unittest.main()

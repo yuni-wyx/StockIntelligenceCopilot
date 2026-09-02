@@ -8,14 +8,17 @@ import {
   type PortfolioChatMvpState,
 } from "@/components/wealth-studio/PortfolioChatMvp";
 import { parsePortfolioHoldingsText } from "@/components/wealth-studio/portfolioChatParser";
+import { normalizeTicker } from "@/lib/tickerMap";
 import { useLanguage } from "@/context/LanguageContext";
 import {
   askAboutPortfolio,
+  analyzePortfolio,
   deleteCurrentPortfolio,
   loadCurrentPortfolio,
   savePortfolio,
   type HoldingInput,
   type PortfolioChatResponse,
+  type PortfolioAnalysisResponse,
 } from "@/lib/portfolioApi";
 
 function makeMessage(role: "assistant" | "user", body: string): PortfolioChatMessage {
@@ -33,6 +36,15 @@ function formatUpdatedAt(value: unknown): string | null {
   return date.toLocaleString();
 }
 
+type HoldingWizardStep =
+  | "ticker"
+  | "shares"
+  | "buy_price"
+  | "buy_date"
+  | "sell_decision"
+  | "sell_price"
+  | "sell_date";
+
 export default function PortfolioPage() {
   const { hydrated, t, locale } = useLanguage();
   const ws = t.wealthStudio;
@@ -43,8 +55,11 @@ export default function PortfolioPage() {
   const [savedHoldings, setSavedHoldings] = useState<HoldingInput[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [chatResponse, setChatResponse] = useState<PortfolioChatResponse | null>(null);
+  const [analysis, setAnalysis] = useState<PortfolioAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wizardStep, setWizardStep] = useState<HoldingWizardStep | null>(null);
+  const [wizardHolding, setWizardHolding] = useState<HoldingInput>({ ticker: "" });
 
   const starterPrompts = useMemo(
     () => [
@@ -74,6 +89,7 @@ export default function PortfolioPage() {
           setSavedHoldings(holdings);
           setLastUpdated(formatUpdatedAt(record.updated_at));
           setState("CHAT_READY");
+          void refreshAnalysis(holdings);
           setMessages([
             makeMessage("assistant", ws.portfolioMemoryLoadedMessage),
           ]);
@@ -100,6 +116,8 @@ export default function PortfolioPage() {
     return () => {
       cancelled = true;
     };
+    // refreshAnalysis is a stable module-backed operation; ws already gates this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, ws]);
 
   function resetChatResults() {
@@ -107,8 +125,167 @@ export default function PortfolioPage() {
     setError(null);
   }
 
+  async function refreshAnalysis(holdings: HoldingInput[]) {
+    if (holdings.length === 0) {
+      setAnalysis(null);
+      return;
+    }
+    try {
+      const response = await analyzePortfolio(buildPortfolioPayload(holdings));
+      setAnalysis(response);
+    } catch {
+      setAnalysis(null);
+    }
+  }
+
   function appendMessages(nextMessages: PortfolioChatMessage[]) {
     setMessages((prev) => [...prev, ...nextMessages]);
+  }
+
+  function startHoldingWizard({ preserveHoldings = false } = {}) {
+    const firstQuestion = makeMessage(
+      "assistant",
+      locale === "zh"
+        ? "好，我們一筆一筆建立持股。請先輸入股票代號或名稱。"
+        : "Let’s build one position at a time. What is the stock ticker or name?",
+    );
+    setWizardHolding({ ticker: "" });
+    setWizardStep("ticker");
+    setInputValue("");
+    if (preserveHoldings) {
+      appendMessages([firstQuestion]);
+    } else {
+      setMessages([firstQuestion]);
+    }
+    resetChatResults();
+  }
+
+  function parseWizardNumber(value: string): number | null {
+    const match = value.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+    const number = Number(match[0]);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function validDate(value: string): string | null {
+    const trimmed = value.trim();
+    const date = new Date(trimmed);
+    return trimmed && !Number.isNaN(date.getTime()) ? trimmed : null;
+  }
+
+  function wizardQuestion(step: HoldingWizardStep): string {
+    if (locale === "zh") {
+      return {
+        ticker: "請輸入股票代號或名稱。",
+        shares: "請問持有幾股？",
+        buy_price: "當時買進價格是多少？",
+        buy_date: "買入日期是哪一天？（例如 2025-03-01）",
+        sell_decision: "這筆持股已經賣出了嗎？請回答「是」或「否」。",
+        sell_price: "賣出價格是多少？",
+        sell_date: "賣出日期是哪一天？（例如 2026-08-31）",
+      }[step];
+    }
+    return {
+      ticker: "What is the stock ticker or name?",
+      shares: "How many shares do you hold?",
+      buy_price: "What price did you buy it at?",
+      buy_date: "What was the buy date? (For example, 2025-03-01)",
+      sell_decision: "Have you sold this position? Please answer yes or no.",
+      sell_price: "What was the sell price?",
+      sell_date: "What was the sell date? (For example, 2026-08-31)",
+    }[step];
+  }
+
+  function finishWizard(holding: HoldingInput) {
+    const buyPrice = holding.buy_price ?? holding.avg_cost;
+    const sellPrice = holding.sell_price;
+    const enrichedHolding: HoldingInput = {
+      ...holding,
+      avg_cost: buyPrice,
+      current_price: sellPrice,
+      current_value: sellPrice !== undefined && holding.shares !== undefined ? sellPrice * holding.shares : undefined,
+    };
+    const profit = buyPrice !== undefined && sellPrice !== undefined && holding.shares !== undefined
+      ? (sellPrice - buyPrice) * holding.shares
+      : null;
+    const holdingDays = holding.buy_date && holding.sell_date
+      ? Math.max(0, Math.round((new Date(holding.sell_date).getTime() - new Date(holding.buy_date).getTime()) / 86400000))
+      : null;
+    const profitText = profit === null
+      ? (locale === "zh" ? "尚未賣出，利潤仍未實現。" : "This position has not been sold, so profit is not realized yet.")
+      : locale === "zh"
+        ? `已實現利潤：${profit.toLocaleString()}；持有 ${holdingDays ?? "—"} 天。`
+        : `Realized profit: ${profit.toLocaleString()}; held for ${holdingDays ?? "—"} days.`;
+    setWizardHolding(enrichedHolding);
+    setPendingHoldings((previous) => [...previous, enrichedHolding]);
+    setWizardStep(null);
+    setState("CONFIRM_HOLDINGS");
+    appendMessages([
+      makeMessage(
+        "assistant",
+        `${locale === "zh" ? "已整理完成：" : "Position captured:"} ${enrichedHolding.name || enrichedHolding.ticker}, ${enrichedHolding.shares} ${locale === "zh" ? "股" : "shares"}, ${locale === "zh" ? "買進" : "bought at"} ${buyPrice ?? "—"}. ${profitText}`,
+      ),
+    ]);
+  }
+
+  function handleWizardSubmit() {
+    if (!wizardStep || !inputValue.trim()) return;
+    const answer = inputValue.trim();
+    appendMessages([makeMessage("user", answer)]);
+    setInputValue("");
+
+    if (wizardStep === "ticker") {
+      const ticker = normalizeTicker(answer);
+      const holding = { ...wizardHolding, ticker, name: answer };
+      setWizardHolding(holding);
+      setWizardStep("shares");
+      appendMessages([makeMessage("assistant", wizardQuestion("shares"))]);
+      return;
+    }
+    if (wizardStep === "shares" || wizardStep === "buy_price" || wizardStep === "sell_price") {
+      const number = parseWizardNumber(answer);
+      if (number === null || number <= 0) {
+        appendMessages([makeMessage("assistant", locale === "zh" ? "請輸入大於 0 的數字。" : "Please enter a number greater than 0.")]);
+        return;
+      }
+      const field = wizardStep === "shares" ? "shares" : wizardStep;
+      const holding = {
+        ...wizardHolding,
+        [field]: number,
+        ...(wizardStep === "buy_price" ? { avg_cost: number } : {}),
+      };
+      const nextStep = wizardStep === "shares" ? "buy_price" : wizardStep === "buy_price" ? "buy_date" : "sell_date";
+      setWizardHolding(holding);
+      setWizardStep(nextStep);
+      appendMessages([makeMessage("assistant", wizardQuestion(nextStep))]);
+      return;
+    }
+    if (wizardStep === "buy_date" || wizardStep === "sell_date") {
+      const date = validDate(answer);
+      if (!date) {
+        appendMessages([makeMessage("assistant", locale === "zh" ? "日期格式看起來不正確，請用 YYYY-MM-DD。" : "That date is not valid. Please use YYYY-MM-DD.")]);
+        return;
+      }
+      const holding = { ...wizardHolding, [wizardStep]: date };
+      const nextStep = wizardStep === "buy_date" ? "sell_decision" : null;
+      setWizardHolding(holding);
+      if (nextStep) {
+        setWizardStep(nextStep);
+        appendMessages([makeMessage("assistant", wizardQuestion(nextStep))]);
+      } else {
+        finishWizard(holding);
+      }
+      return;
+    }
+    const sold = /^(是|有|已|yes|y|sold)$/i.test(answer);
+    if (sold) {
+      setWizardStep("sell_price");
+      appendMessages([makeMessage("assistant", wizardQuestion("sell_price"))]);
+    } else if (/^(否|沒有|未|no|n|not yet)$/i.test(answer)) {
+      finishWizard(wizardHolding);
+    } else {
+      appendMessages([makeMessage("assistant", wizardQuestion("sell_decision"))]);
+    }
   }
 
   function buildPortfolioPayload(holdings: HoldingInput[]) {
@@ -144,7 +321,7 @@ export default function PortfolioPage() {
           ws.holdingsParsedIntro,
           ...parsed.holdings.map(
             (holding) =>
-              `${holding.name || holding.ticker}: ${holding.shares?.toLocaleString()} ${ws.shares}, ${ws.avgCost} ${holding.avg_cost?.toLocaleString()}`,
+              `${holding.name || holding.ticker}: ${holding.shares?.toLocaleString()} ${ws.shares}, ${ws.avgCost} ${holding.avg_cost === undefined ? "—" : holding.avg_cost.toLocaleString()}`,
           ),
           parsed.warnings[0] ?? "",
           ws.holdingsConfirmQuestion,
@@ -184,6 +361,10 @@ export default function PortfolioPage() {
   }
 
   function handleSubmit() {
+    if (wizardStep) {
+      handleWizardSubmit();
+      return;
+    }
     if (savedHoldings.length > 0 && state !== "ASK_HOLDINGS" && state !== "CONFIRM_HOLDINGS") {
       void handleAskQuestion();
       return;
@@ -204,6 +385,7 @@ export default function PortfolioPage() {
         make_current: true,
       });
       setSavedHoldings(pendingHoldings);
+      void refreshAnalysis(pendingHoldings);
       setPendingHoldings([]);
       setLastUpdated(formatUpdatedAt(record.updated_at));
       setState("PORTFOLIO_SAVED");
@@ -216,27 +398,47 @@ export default function PortfolioPage() {
     }
   }
 
+  async function handleSaveTable(holdings: HoldingInput[]) {
+    setLoading(true);
+    setError(null);
+    try {
+      const record = await savePortfolio({
+        portfolio: buildPortfolioPayload(holdings),
+        name: "current",
+        make_current: true,
+      });
+      setSavedHoldings(holdings);
+      setPendingHoldings([]);
+      setLastUpdated(formatUpdatedAt(record.updated_at));
+      setState("PORTFOLIO_SAVED");
+      setChatResponse(null);
+      void refreshAnalysis(holdings);
+      appendMessages([makeMessage("assistant", ws.portfolioMemorySavedMessage)]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ws.failedSave);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function handleEditPending() {
-    const source = pendingHoldings.length > 0 ? pendingHoldings : savedHoldings;
-    setInputValue(
-      source
-        .map(
-          (holding) =>
-            `${holding.name || holding.ticker} ${holding.shares ?? ""} ${ws.shares} ${ws.avgCost} ${holding.avg_cost ?? ""}`,
-        )
-        .join("；"),
-    );
-    setPendingHoldings([]);
-    setState("ASK_HOLDINGS");
-    resetChatResults();
+    setPendingHoldings(savedHoldings);
+    startHoldingWizard({ preserveHoldings: savedHoldings.length > 0 });
+  }
+
+  function handleAddAnotherHolding() {
+    startHoldingWizard({ preserveHoldings: true });
   }
 
   function handleStartOver() {
     setInputValue("");
     setPendingHoldings([]);
+    setWizardHolding({ ticker: "" });
+    setWizardStep(null);
     setState(savedHoldings.length > 0 ? "CHAT_READY" : "ASK_HOLDINGS");
     resetChatResults();
-    appendMessages([makeMessage("assistant", ws.portfolioOnboardingQuestion)]);
+    startHoldingWizard();
   }
 
   async function handleReplacePortfolio() {
@@ -251,6 +453,9 @@ export default function PortfolioPage() {
       setPendingHoldings([]);
       setLastUpdated(null);
       setChatResponse(null);
+      setAnalysis(null);
+      setWizardStep(null);
+      setWizardHolding({ ticker: "" });
       setInputValue("");
       setState("ASK_HOLDINGS");
       setMessages([makeMessage("assistant", ws.portfolioOnboardingQuestion)]);
@@ -278,6 +483,8 @@ export default function PortfolioPage() {
       inputValue={inputValue}
       pendingHoldings={pendingHoldings}
       savedHoldings={savedHoldings}
+      analysis={analysis}
+      wizardStep={wizardStep}
       lastUpdated={lastUpdated}
       loading={loading}
       error={error}
@@ -287,6 +494,8 @@ export default function PortfolioPage() {
       onSubmit={handleSubmit}
       onSavePending={() => void handleSavePending()}
       onEditPending={handleEditPending}
+      onAddAnotherHolding={handleAddAnotherHolding}
+      onSaveTable={handleSaveTable}
       onStartOver={handleStartOver}
       onReplacePortfolio={() => void handleReplacePortfolio()}
       onUsePrompt={handleUsePrompt}

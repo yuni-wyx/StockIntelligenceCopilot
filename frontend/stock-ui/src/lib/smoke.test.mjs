@@ -56,7 +56,7 @@ test("api base source builds urls under /api and requires deployed env config", 
   const source = read("src/lib/apiBase.ts");
   const portfolioApi = read("src/lib/portfolioApi.ts");
   assert.match(source, /NEXT_PUBLIC_BACKEND_BASE_URL/);
-  assert.match(source, /http:\/\/localhost:8000/);
+  assert.match(source, /http:\/\/\$\{host\}:8000/);
   assert.match(source, /\/api\$\{path\}/);
   assert.match(portfolioApi, /\/portfolio\/chat/);
   assert.match(portfolioApi, /\/portfolio\/monitor/);
@@ -68,6 +68,11 @@ test("research mode still exists in copilot source", () => {
   assert.match(source, /research/);
   assert.match(source, /SignalPanel/);
   assert.match(source, /extractSignalViewModel/);
+  assert.match(source, /Primary filings/);
+  assert.match(source, /Tier 1 filing sources linked/);
+  assert.match(source, /source_type === "filing"/);
+  assert.match(source, /research_conflicts/);
+  assert.match(source, /Research data quality notes/);
 });
 
 test("signal panel labels are defined for english and traditional chinese", () => {

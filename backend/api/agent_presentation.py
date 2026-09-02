@@ -49,7 +49,24 @@ def agent_result_to_api_response(result: AgentResult) -> dict:
         ],
         "confidence_score": confidence_score,
     }
-    return {**payload, **audit}
+    research_payload = result.evidence.external_evidence.get("research_evidence") or {}
+    audit["research_data_gaps"] = research_payload.get("data_gaps", [])
+    audit["research_conflicts"] = research_payload.get("conflicts", [])
+    response = {**payload, **audit}
+    legacy = result.evidence.legacy_evidence
+    if (
+        legacy is not None
+        and legacy.total_tool_calls > 0
+        and legacy.successful_calls == 0
+    ):
+        return JSONResponse(
+            status_code=502,
+            content={
+                **response,
+                "error": "All evidence providers failed; no grounded result is available.",
+            },
+        )
+    return response
 
 
 def agent_exception_to_api_error(task: AgentTask, exc: Exception) -> dict:

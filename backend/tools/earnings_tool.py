@@ -29,30 +29,30 @@ class EarningsEstimate(BaseModel):
         ...,
         description="BMO (before market open) or AMC (after market close).",
     )
-    eps_estimate_consensus: float
-    eps_estimate_high: float
-    eps_estimate_low: float
-    revenue_estimate_billions: float
-    num_analysts: int
+    eps_estimate_consensus: float | None
+    eps_estimate_high: float | None
+    eps_estimate_low: float | None
+    revenue_estimate_billions: float | None
+    num_analysts: int | None
 
 
 class EarningsResult(BaseModel):
     period: str
     report_date: str
-    eps_actual: float
-    eps_estimate: float
-    eps_surprise: float = Field(..., description="Actual minus estimate.")
-    eps_surprise_pct: float
-    revenue_actual_billions: float
-    revenue_estimate_billions: float
-    revenue_surprise_pct: float
-    guidance_raised: bool
-    post_earnings_move_pct: float = Field(
+    eps_actual: float | None
+    eps_estimate: float | None
+    eps_surprise: float | None = Field(None, description="Actual minus estimate.")
+    eps_surprise_pct: float | None
+    revenue_actual_billions: float | None
+    revenue_estimate_billions: float | None
+    revenue_surprise_pct: float | None
+    guidance_raised: bool | None
+    post_earnings_move_pct: float | None = Field(
         ...,
         description="Stock price % change in the session after earnings.",
     )
     key_metrics: Dict[str, Any]
-    management_commentary: str
+    management_commentary: str | None
 
 
 class EarningsResponse(BaseModel):
@@ -60,9 +60,12 @@ class EarningsResponse(BaseModel):
     next_earnings: Optional[EarningsEstimate]
     days_to_next_earnings: Optional[int]
     earnings_history: List[EarningsResult]
-    avg_eps_surprise_pct: float
-    avg_post_earnings_move_pct: float
-    beat_rate: float = Field(..., description="Fraction of quarters with positive EPS surprise.")
+    avg_eps_surprise_pct: float | None
+    avg_post_earnings_move_pct: float | None
+    beat_rate: float | None = Field(
+        None, description="Fraction of quarters with positive EPS surprise."
+    )
+    data_caveats: List[str] = Field(default_factory=list)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -186,7 +189,7 @@ def _extract_revenue_series(yf_ticker: yf.Ticker) -> Dict[str, float]:
     return {}
 
 
-def _price_move_after_date(yf_ticker: yf.Ticker, report_date: str) -> float:
+def _price_move_after_date(yf_ticker: yf.Ticker, report_date: str) -> float | None:
     """
     Approximate post-earnings move using next available daily close vs prior close.
     """
@@ -200,16 +203,16 @@ def _price_move_after_date(yf_ticker: yf.Ticker, report_date: str) -> float:
         )
         hist = hist.dropna()
         if len(hist) < 2:
-            return 0.0
+            return None
 
         closes = hist["Close"].tolist()
         prev_close = closes[0]
         next_close = closes[1]
         if prev_close == 0:
-            return 0.0
+            return None
         return round(((next_close - prev_close) / prev_close) * 100, 2)
     except Exception:
-        return 0.0
+        return None
 
 
 # ── Core implementation ───────────────────────────────────────────────────────
@@ -220,7 +223,6 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
     """
     ticker = normalize_symbol(request.ticker)
     yf_ticker = yf.Ticker(ticker)
-    info = yf_ticker.info or {}
 
     # ---- Next earnings ----
     next_earnings: Optional[EarningsEstimate] = None
@@ -249,11 +251,8 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
             pass
 
     if report_date_iso:
-        revenue_est_b = 0.0
-        eps_consensus = 0.0
-        eps_high = 0.0
-        eps_low = 0.0
-        num_analysts = 0
+        eps_consensus = None
+        num_analysts = None
 
         if earnings_dates is not None and not earnings_dates.empty:
             try:
@@ -262,23 +261,13 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
                 ]
                 if not matched.empty:
                     row = matched.iloc[0]
-                    eps_consensus = _safe_float(
-                        row.get("EPS Estimate") or row.get("EPS Estimate".lower())
-                    )
-                    num_analysts = _safe_int(
-                        row.get("No. of Analysts") or row.get("numberOfAnalysts")
-                    )
+                    raw_eps = row.get("EPS Estimate") or row.get("eps estimate")
+                    eps_consensus = _safe_float(raw_eps, None)
+                    raw_analysts = row.get("No. of Analysts") or row.get("numberOfAnalysts")
+                    num_analysts = _safe_int(raw_analysts, None)
             except Exception:
                 pass
 
-        # Yahoo often doesn't expose high/low EPS estimate cleanly here; use conservative fallback
-        eps_high = round(eps_consensus * 1.08, 2) if eps_consensus else 0.0
-        eps_low = round(eps_consensus * 0.92, 2) if eps_consensus else 0.0
-
-        revenue_est_b = round(
-            _safe_float(info.get("revenueQuarterlyGrowth")) * 0,
-            2,
-        )  # placeholder if unavailable
         period = _make_period_label(report_date_iso)
         days_to_next_earnings = (date.fromisoformat(report_date_iso) - date.today()).days
 
@@ -286,10 +275,10 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
             period=period,
             report_date=report_date_iso,
             report_time=report_time,
-            eps_estimate_consensus=round(eps_consensus, 2),
-            eps_estimate_high=eps_high,
-            eps_estimate_low=eps_low,
-            revenue_estimate_billions=revenue_est_b,
+            eps_estimate_consensus=round(eps_consensus, 2) if eps_consensus is not None else None,
+            eps_estimate_high=None,
+            eps_estimate_low=None,
+            revenue_estimate_billions=None,
             num_analysts=num_analysts,
         )
 
@@ -307,22 +296,21 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
                 report_date = pd.Timestamp(idx).date().isoformat()
                 period = _make_period_label(idx)
 
-                eps_estimate = _safe_float(row.get("EPS Estimate"))
-                eps_actual = _safe_float(row.get("Reported EPS"))
+                eps_actual_value = _safe_float(row.get("Reported EPS"), None)
+                eps_estimate_value = _safe_float(row.get("EPS Estimate"), None)
                 eps_surprise = (
-                    round(eps_actual - eps_estimate, 3)
-                    if eps_estimate or eps_actual
-                    else 0.0
+                    round(eps_actual_value - eps_estimate_value, 3)
+                    if eps_estimate_value is not None and eps_actual_value is not None
+                    else None
                 )
                 eps_surprise_pct = (
-                    round((eps_surprise / eps_estimate) * 100, 2)
-                    if eps_estimate
-                    else 0.0
+                    round((eps_surprise / eps_estimate_value) * 100, 2)
+                    if eps_surprise is not None and eps_estimate_value
+                    else None
                 )
 
-                revenue_actual = revenue_map.get(report_date, 0.0)
-                revenue_estimate = revenue_actual
-                revenue_surprise_pct = 0.0
+                revenue_actual = revenue_map.get(report_date)
+                revenue_surprise_pct = None
 
                 post_move = _price_move_after_date(yf_ticker, report_date)
 
@@ -330,39 +318,70 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
                     EarningsResult(
                         period=period,
                         report_date=report_date,
-                        eps_actual=round(eps_actual, 2),
-                        eps_estimate=round(eps_estimate, 2),
+                        eps_actual=(
+                            round(eps_actual_value, 2)
+                            if eps_actual_value is not None
+                            else None
+                        ),
+                        eps_estimate=(
+                            round(eps_estimate_value, 2)
+                            if eps_estimate_value is not None
+                            else None
+                        ),
                         eps_surprise=eps_surprise,
                         eps_surprise_pct=eps_surprise_pct,
-                        revenue_actual_billions=_to_billions(revenue_actual),
-                        revenue_estimate_billions=_to_billions(revenue_estimate),
+                        revenue_actual_billions=(
+                            _to_billions(revenue_actual)
+                            if revenue_actual is not None
+                            else None
+                        ),
+                        revenue_estimate_billions=None,
                         revenue_surprise_pct=revenue_surprise_pct,
                         guidance_raised=False,
                         post_earnings_move_pct=post_move,
                         key_metrics={
                             "source": "yfinance",
-                            "reported_eps": round(eps_actual, 2),
-                            "eps_estimate": round(eps_estimate, 2),
+                            "reported_eps": (
+                                round(eps_actual_value, 2)
+                                if eps_actual_value is not None
+                                else None
+                            ),
+                            "eps_estimate": (
+                                round(eps_estimate_value, 2)
+                                if eps_estimate_value is not None
+                                else None
+                            ),
                         },
                         management_commentary=(
-                            "Management commentary not available "
-                            "from Yahoo Finance feed."
+                            "Management commentary not available from "
+                            "Yahoo Finance feed."
                         ),
                     )
                 )
         except Exception:
             earnings_history = []
 
-    beats = sum(1 for r in earnings_history if r.eps_surprise > 0)
+    known_eps = [r for r in earnings_history if r.eps_surprise_pct is not None]
+    beats = sum(1 for r in known_eps if r.eps_surprise is not None and r.eps_surprise > 0)
     avg_eps_surprise_pct = (
-        round(sum(r.eps_surprise_pct for r in earnings_history) / len(earnings_history), 2)
-        if earnings_history else 0.0
+        round(sum(r.eps_surprise_pct for r in known_eps) / len(known_eps), 2)
+        if known_eps else None
     )
     avg_post_earnings_move_pct = (
-        round(sum(r.post_earnings_move_pct for r in earnings_history) / len(earnings_history), 2)
-        if earnings_history else 0.0
+        round(
+            sum(
+                r.post_earnings_move_pct
+                for r in earnings_history
+                if r.post_earnings_move_pct is not None
+            )
+            / len(
+                [r for r in earnings_history if r.post_earnings_move_pct is not None]
+            ),
+            2,
+        )
+        if any(r.post_earnings_move_pct is not None for r in earnings_history) else None
     )
-    beat_rate = round(beats / len(earnings_history), 2) if earnings_history else 0.0
+    beat_rate = round(beats / len(known_eps), 2) if known_eps else None
 
     return EarningsResponse(
         ticker=ticker,
@@ -372,4 +391,11 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
         avg_eps_surprise_pct=avg_eps_surprise_pct,
         avg_post_earnings_move_pct=avg_post_earnings_move_pct,
         beat_rate=beat_rate,
+        data_caveats=[
+            "Earnings data is sourced from Yahoo Finance and may be delayed or incomplete.",
+            *(["Revenue estimates and guidance were unavailable."]
+              if any(r.revenue_estimate_billions is None for r in earnings_history) else []),
+            *(["Post-earnings price moves were unavailable for one or more periods."]
+              if any(r.post_earnings_move_pct is None for r in earnings_history) else []),
+        ],
     )

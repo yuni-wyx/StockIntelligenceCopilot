@@ -7,7 +7,7 @@ These are the top-level objects returned to the caller / CLI.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from pydantic import BaseModel, Field
@@ -49,7 +49,7 @@ class TradingDecisionOutput(BaseModel):
 
     ticker: str = Field(..., description="Ticker symbol.")
     generated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="UTC timestamp when the trading decision was generated.",
     )
     bias: str = Field(
@@ -86,7 +86,7 @@ class StockResearchOutput(BaseModel):
     """Final output for Stock Research Mode."""
 
     ticker: str = Field(..., description="Ticker symbol.")
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     fundamental_summary: str = Field(
         ...,
         description="Concise overview of the company's fundamentals.",
@@ -119,7 +119,7 @@ class PriceMovementOutput(BaseModel):
     """Final output for Price Movement Explanation Mode."""
 
     ticker: str = Field(..., description="Ticker symbol.")
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     price_move_summary: str = Field(
         ...,
         description="Plain-English summary of today's price action.",
@@ -178,7 +178,7 @@ class WatchlistMonitorOutput(BaseModel):
     """Final output for Watchlist Monitoring Mode."""
 
     tickers: List[str] = Field(..., description="List of ticker symbols in the watchlist.")
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     portfolio_summary: str = Field(
         ...,
         description="Cross-ticker narrative for the week.",

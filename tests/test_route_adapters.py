@@ -29,9 +29,36 @@ class RouteAdapterTest(unittest.TestCase):
 
         self.assertEqual(research.task_type, AgentTaskType.RESEARCH)
         self.assertEqual(research.raw_query, "research TSLA")
+        self.assertEqual(research.metadata["security_identity"]["symbol"], "TSLA")
+        self.assertEqual(research.metadata["security_identity"]["currency"], "USD")
         self.assertEqual(explain.raw_query, "explain 2330.TW")
         self.assertEqual(trade.raw_query, "trade 2330.TW")
         self.assertEqual(watchlist.raw_query, "watchlist TSLA 2330.TW")
+
+    def test_research_request_preserves_query_and_market_context(self) -> None:
+        from backend.main import ResearchRequest
+        from backend.pipeline.route_adapters import research_request_to_agent_task
+
+        task = research_request_to_agent_task(
+            ResearchRequest(
+                ticker="2330",
+                query="research 2330 earnings",
+                exchange="TWSE",
+                country="TW",
+            )
+        )
+
+        self.assertEqual(task.raw_query, "research 2330 earnings")
+        self.assertEqual(task.metadata["security_identity"]["symbol"], "2330.TW")
+        self.assertEqual(task.metadata["security_identity"]["exchange"], "TWSE")
+
+    def test_research_request_rejects_empty_ticker(self) -> None:
+        from pydantic import ValidationError
+
+        from backend.main import ResearchRequest
+
+        with self.assertRaises(ValidationError):
+            ResearchRequest(ticker="")
 
     def test_portfolio_request_adapters_build_agent_tasks(self) -> None:
         from backend.pipeline.route_adapters import (

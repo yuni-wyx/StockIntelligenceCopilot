@@ -23,6 +23,9 @@ class ToolResult(BaseModel):
         default=None,
         description="Safe error message if success=False.",
     )
+    error_category: Literal[
+        "timeout", "connection", "provider", "unknown"
+    ] | None = None
     data: Dict[str, Any] = Field(
         default_factory=dict,
         description="Tool payload (structure varies by tool).",
@@ -51,6 +54,7 @@ class SourceMetadata(BaseModel):
     url: str | None = None
     published_at: str | None = None
     retrieved_at: str | None = None
+    source_tier: Literal["tier_1", "tier_2", "tier_3", "tier_4"] | None = None
     tool: str | None = None
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     fields: list[str] = Field(default_factory=list)

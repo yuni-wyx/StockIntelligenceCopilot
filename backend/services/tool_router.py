@@ -14,9 +14,11 @@ Design:
 
 from __future__ import annotations
 
+import time
 from typing import Any, Callable, Dict, List
 
 try:
+    from ..config import PROVIDER_MAX_RETRIES, PROVIDER_RETRY_BACKOFF_SECONDS
     from ..schemas.evidence_schema import ToolResult
     from ..schemas.planner_schema import ExecutionPlan, ToolCallSpec, ToolName
     from ..symbols import detect_market
@@ -26,6 +28,7 @@ try:
     from ..tools.news_tool import NewsRequest, fetch_news
     from ..tools.signal_tool import SignalToolRequest, fetch_signal
 except ImportError:
+    from config import PROVIDER_MAX_RETRIES, PROVIDER_RETRY_BACKOFF_SECONDS
     from schemas.evidence_schema import ToolResult
     from schemas.planner_schema import ExecutionPlan, ToolCallSpec, ToolName
     from symbols import detect_market
@@ -171,19 +174,35 @@ class ToolRouter:
                 error=f"No handler registered for tool '{spec.tool}'",
             )
 
-        try:
-            data = handler(spec)
-            return ToolResult(
-                tool=spec.tool,
-                ticker=spec.ticker,
-                success=True,
-                data=data,
-            )
-        except Exception as exc:
-            return ToolResult(
-                tool=spec.tool,
-                ticker=spec.ticker,
-                success=False,
-                data={},
-                error=f"{type(exc).__name__}: {exc}",
-            )
+        attempt = 0
+        while True:
+            try:
+                data = handler(spec)
+                return ToolResult(
+                    tool=spec.tool,
+                    ticker=spec.ticker,
+                    success=True,
+                    data=data,
+                )
+            except (TimeoutError, ConnectionError) as exc:
+                if attempt >= PROVIDER_MAX_RETRIES:
+                    error_category = "timeout" if isinstance(exc, TimeoutError) else "connection"
+                    return ToolResult(
+                        tool=spec.tool,
+                        ticker=spec.ticker,
+                        success=False,
+                        data={},
+                        error=f"{type(exc).__name__}: {exc}",
+                        error_category=error_category,
+                    )
+                time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * (2**attempt))
+                attempt += 1
+            except Exception as exc:
+                return ToolResult(
+                    tool=spec.tool,
+                    ticker=spec.ticker,
+                    success=False,
+                    data={},
+                    error=f"{type(exc).__name__}: {exc}",
+                    error_category="provider",
+                )

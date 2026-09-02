@@ -10,6 +10,7 @@ try:
         ScenarioComparisonRequest,
         ScenarioRequest,
     )
+    from ..services.security_resolver import resolve_security
     from ..symbols import normalize_symbol
 except ImportError:
     from schemas.agent import AgentTask, AgentTaskType
@@ -19,6 +20,7 @@ except ImportError:
         ScenarioComparisonRequest,
         ScenarioRequest,
     )
+    from services.security_resolver import resolve_security
     from symbols import normalize_symbol
 
 
@@ -28,10 +30,16 @@ def _normalize_tickers(tickers: Iterable[str]) -> list[str]:
 
 def research_request_to_agent_task(request) -> AgentTask:
     ticker = normalize_symbol(request.ticker)
+    identity = resolve_security(
+        request.ticker,
+        exchange=request.exchange,
+        country=request.country,
+    )
     return AgentTask(
         task_type=AgentTaskType.RESEARCH,
-        raw_query=f"research {ticker}",
+        raw_query=request.query or f"research {ticker}",
         tickers=[ticker],
+        metadata={"security_identity": identity.model_dump(mode="json")},
     )
 
 

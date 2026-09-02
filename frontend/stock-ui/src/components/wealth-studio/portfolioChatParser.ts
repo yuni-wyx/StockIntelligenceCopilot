@@ -58,7 +58,9 @@ function parseHoldingLine(line: string): ParsedHoldingDraft | null {
   const shares = parseNumber(remainder.match(SHARES_PATTERN)?.[1]);
   const avgCost = parseNumber(cleanedLine.match(COST_PATTERN)?.[1]);
 
-  if (!shares || shares <= 0 || avgCost === undefined || avgCost < 0) {
+  // Average cost is optional during onboarding. The analysis layer will surface
+  // the missing cost basis instead of rejecting an otherwise valid position.
+  if (!shares || shares <= 0 || (avgCost !== undefined && avgCost < 0)) {
     return null;
   }
 

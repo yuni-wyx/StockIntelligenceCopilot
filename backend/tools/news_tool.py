@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional
 
 import requests
@@ -9,11 +9,11 @@ from langsmith import traceable
 from pydantic import BaseModel, Field
 
 try:
-    from ..config import ALPHA_VANTAGE_API_KEY
-    from ..symbols import detect_market, normalize_symbol, symbol_info
+    from ..config import ALPHA_VANTAGE_API_KEY, PROVIDER_TIMEOUT_SECONDS
+    from ..symbols import detect_market, normalize_symbol
 except ImportError:
-    from config import ALPHA_VANTAGE_API_KEY
-    from symbols import detect_market, normalize_symbol, symbol_info
+    from config import ALPHA_VANTAGE_API_KEY, PROVIDER_TIMEOUT_SECONDS
+    from symbols import detect_market, normalize_symbol
 
 # ── I/O models ───────────────────────────────────────────────────────────────
 
@@ -46,6 +46,7 @@ class NewsResponse(BaseModel):
     articles: List[NewsArticle]
     overall_sentiment: str
     avg_sentiment_score: float
+    data_caveats: List[str] = Field(default_factory=list)
 
 
 # ── Core ─────────────────────────────────────────────────────────────────────
@@ -101,7 +102,10 @@ def _extract_yahoo_news(ticker: str, limit: int) -> list[NewsArticle]:
         elif isinstance(published_ts, str):
             published_at = published_ts
         else:
-            published_at = datetime.now(timezone.utc).isoformat()
+            # An article without a publication timestamp cannot be safely
+            # presented as recent; retain it only if the provider supplied a
+            # usable timestamp.
+            continue
 
         articles.append(
             NewsArticle(
@@ -129,8 +133,6 @@ def fetch_news(request: NewsRequest) -> NewsResponse:
 
     ticker = normalize_symbol(request.ticker)
     market = detect_market(ticker)
-    info = symbol_info(ticker)
-
     articles: List[NewsArticle] = []
 
     if market == "US":
@@ -143,7 +145,11 @@ def fetch_news(request: NewsRequest) -> NewsResponse:
         }
 
         try:
-            res = requests.get(ALPHA_VANTAGE_URL, params=params, timeout=15)
+            res = requests.get(
+                ALPHA_VANTAGE_URL,
+                params=params,
+                timeout=PROVIDER_TIMEOUT_SECONDS,
+            )
             res.raise_for_status()
             data = res.json()
             feed = data.get("feed", [])
@@ -171,7 +177,7 @@ def fetch_news(request: NewsRequest) -> NewsResponse:
                     dt = datetime.strptime(published, "%Y%m%dT%H%M%S")
                     published_at = dt.replace(tzinfo=timezone.utc).isoformat()
                 else:
-                    published_at = datetime.now(timezone.utc).isoformat()
+                    continue
 
                 articles.append(
                     NewsArticle(
@@ -198,23 +204,18 @@ def fetch_news(request: NewsRequest) -> NewsResponse:
 
     if not articles:
         articles = _extract_yahoo_news(ticker, request.max_articles)
-        if market == "TW" and not articles:
-            articles.append(
-                NewsArticle(
-                    article_id=ticker[:16],
-                    published_at=datetime.now(timezone.utc).isoformat(),
-                    title=f"{info.display_name} ({ticker}) market update",
-                    source="Local market fallback",
-                    url="",
-                    summary=f"No structured news feed was available for {info.display_name}.",
-                    sentiment="neutral",
-                    sentiment_score=0.0,
-                    relevance_score=0.4,
-                    tickers_mentioned=[ticker],
-                    topics=["general"],
-                )
-            )
 
+    cutoff = datetime.now(timezone.utc) - timedelta(days=request.lookback_days)
+    recent_articles = []
+    for article in articles:
+        try:
+            published = datetime.fromisoformat(article.published_at.replace("Z", "+00:00"))
+            if published >= cutoff:
+                recent_articles.append(article)
+        except ValueError:
+            continue
+
+    articles = recent_articles
     articles.sort(
         key=lambda x: (x.relevance_score, x.published_at),
         reverse=True
@@ -240,4 +241,9 @@ def fetch_news(request: NewsRequest) -> NewsResponse:
         articles=articles,
         overall_sentiment=overall,
         avg_sentiment_score=avg_score,
+        data_caveats=(
+            ["No provider articles were available for this ticker and period."]
+            if not articles
+            else []
+        ),
     )

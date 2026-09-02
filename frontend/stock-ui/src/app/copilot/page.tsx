@@ -72,6 +72,7 @@ type CopilotOutput = {
     title?: string | null;
     url?: string | null;
     confidence?: number;
+    source_tier?: string | null;
   }>;
   claim_evidence?: Array<{
     claim_id: string;
@@ -90,6 +91,8 @@ type CopilotOutput = {
     severity: string;
   }>;
   confidence_score?: number;
+  research_data_gaps?: string[];
+  research_conflicts?: string[];
   volume_context?: string;
 };
 
@@ -105,6 +108,13 @@ function EvidenceAudit({ output }: { output: CopilotOutput }) {
   const sources = output.evidence_provenance ?? [];
   const claims = output.claim_evidence ?? [];
   const unsupported = output.unsupported_claims ?? [];
+  const filingSources = sources.filter((source) => source.source_type === "filing");
+  const filingSourceIds = new Set(filingSources.map((source) => source.source_id));
+  const filingClaims = claims.filter((claim) =>
+    claim.evidence_ids.some((sourceId) => filingSourceIds.has(sourceId)),
+  );
+  const researchConflicts = output.research_conflicts ?? [];
+  const researchDataGaps = output.research_data_gaps ?? [];
 
   if (sources.length === 0 && claims.length === 0 && unsupported.length === 0) {
     return null;
@@ -127,6 +137,37 @@ function EvidenceAudit({ output }: { output: CopilotOutput }) {
           value={output.confidence_score !== undefined ? `${Math.round(output.confidence_score * 100)}%` : "N/A"}
         />
       </div>
+      {filingSources.length > 0 ? (
+        <div className="mt-3 rounded-lg border border-sky-300/20 bg-sky-300/10 p-3">
+          <div className="text-xs font-medium text-sky-100">Primary filings</div>
+          <p className="mt-1 text-xs leading-5 text-sky-100/70">
+            Tier 1 filing sources linked to {filingClaims.length} generated claim(s).
+          </p>
+          <div className="mt-2 space-y-2">
+            {filingSources.map((source) => (
+              <div key={source.source_id} className="text-xs text-sky-50">
+                <span className="font-medium">{source.provider || "SEC filing"}</span>
+                {source.ticker ? ` · ${source.ticker}` : ""}
+                {source.url ? (
+                  <a href={source.url} target="_blank" rel="noreferrer" className="ml-2 break-all text-amber-100 hover:text-white">
+                    Open filing
+                  </a>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {researchConflicts.length > 0 || researchDataGaps.length > 0 ? (
+        <div className="mt-3 rounded-lg border border-amber-300/25 bg-amber-300/10 p-3">
+          <div className="text-xs font-medium text-amber-100">Research data quality notes</div>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-amber-100/80">
+            {[...researchConflicts, ...researchDataGaps].slice(0, 4).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {unsupported.length > 0 ? (
         <div className="mt-3 rounded-lg border border-amber-300/25 bg-amber-300/10 p-3">
           <div className="text-xs font-medium text-amber-100">Unsupported claim warnings</div>

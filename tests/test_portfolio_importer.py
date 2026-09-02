@@ -79,7 +79,7 @@ class PortfolioImporterTest(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "Please upload a CSV file.")
+        self.assertEqual(response.json()["error"], "Please upload a CSV or XLSX file.")
 
 
 if __name__ == "__main__":

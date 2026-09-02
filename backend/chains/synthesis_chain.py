@@ -18,7 +18,7 @@ Trade mode uses an LLM to produce a structured trading decision.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Tuple
 
 from langchain_core.runnables import RunnableLambda
@@ -244,7 +244,7 @@ def _heuristic_trade_decision(
 
     return TradingDecisionOutput(
         ticker=ticker,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         bias=bias,
         buy_zone=buy_zone,
         stop_loss=stop_loss,
@@ -263,10 +263,19 @@ def _synthesise_research(
 ) -> StockResearchOutput:
     ticker = plan.tickers[0]
     ev = evidence.get_ticker(ticker)
+    inc = ev.fundamentals.get("income_statement", {}) if ev and ev.fundamentals else {}
 
     signal_payload = _signal_payload(evidence, ticker, runtime_signals)
     signal_summary = _signal_summary_text(signal_payload)
     signal_caveat = _signal_caveat_text(signal_payload)
+
+    def _number(value: Any, suffix: str = "") -> str:
+        if value is None:
+            return "N/A"
+        return f"{value:.1f}{suffix}"
+
+    revenue_growth = inc.get("revenue_growth_yoy") if ev and ev.fundamentals else None
+    net_margin = inc.get("net_margin") if ev and ev.fundamentals else None
 
     if ev and ev.fundamentals:
         f = ev.fundamentals
@@ -278,9 +287,9 @@ def _synthesise_research(
         fund_summary = (
             f"{profile.get('name', ticker)} ({ticker}) operates in the "
             f"{profile.get('sector', 'N/A')} sector. "
-            f"Revenue: ${inc.get('revenue_billions', 0):.1f}B "
-            f"({_fmt_pct(inc.get('revenue_growth_yoy', 0) * 100)} YoY). "
-            f"Net margin: {inc.get('net_margin', 0) * 100:.1f}%. "
+            f"Revenue: ${_number(inc.get('revenue_billions'))}B "
+            f"({_fmt_pct(revenue_growth * 100) if revenue_growth is not None else 'N/A'} YoY). "
+            f"Net margin: {_number(net_margin * 100 if net_margin is not None else None)}%. "
             f"Forward P/E: {val.get('pe_forward', 'N/A')}x. "
             f"Key strength: {adv[0] if adv else 'N/A'}."
         )
@@ -288,6 +297,18 @@ def _synthesise_research(
         fund_summary = f"Fundamental data unavailable for {ticker}."
     if signal_summary:
         fund_summary = f"{fund_summary} {signal_summary}"
+
+    research_payload = (runtime_signals or {}).get("__research_evidence") or {}
+    filing_facts = research_payload.get("facts") or []
+    if filing_facts:
+        fact_summary = "; ".join(
+            (
+                f"{fact.get('metric')}: {fact.get('value')} {fact.get('unit') or ''} "
+                f"({fact.get('fiscal_period') or 'reported period'})"
+            ).replace("  ", " ").strip()
+            for fact in filing_facts[:3]
+        )
+        fund_summary = f"{fund_summary} SEC filing facts: {fact_summary}."
 
     if ev and ev.news:
         headlines = [a.get("title", "") for a in ev.news[:3]]
@@ -316,7 +337,7 @@ def _synthesise_research(
 
     if ev and ev.earnings:
         beat_rate = ev.earnings.get("beat_rate", 0)
-        if beat_rate >= 0.75:
+        if beat_rate is not None and beat_rate >= 0.75:
             bull_points.append(
                 f"Strong earnings track record ({beat_rate * 100:.0f}% beat rate)"
             )
@@ -334,8 +355,8 @@ def _synthesise_research(
 
     if ev and ev.market_data:
         md = ev.market_data
-        if md.get("technicals"):
-            rsi = md["technicals"].get("rsi_14", 50)
+        if md.get("technicals") and md["technicals"].get("rsi_14") is not None:
+            rsi = md["technicals"]["rsi_14"]
             if rsi > 70:
                 bear_points.append(f"Technically overbought (RSI: {rsi:.0f})")
 
@@ -364,8 +385,8 @@ def _synthesise_research(
         )
 
     if ev and ev.market_data:
-        rsi = (ev.market_data.get("technicals") or {}).get("rsi_14", 50)
-        if rsi > 65 or rsi < 35:
+        rsi = (ev.market_data.get("technicals") or {}).get("rsi_14")
+        if rsi is not None and (rsi > 65 or rsi < 35):
             watch_points.append(
                 WatchPoint(
                     item="RSI Reversal Signal",
@@ -392,7 +413,7 @@ def _synthesise_research(
 
     return StockResearchOutput(
         ticker=ticker,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         fundamental_summary=fund_summary,
         recent_news_summary=news_summary,
         bull_case=bull_case,
@@ -544,7 +565,12 @@ def _synthesise_price_movement(
         ),
     ]
 
-    if ev and ev.earnings and ev.earnings.get("days_to_next_earnings", 999) <= 21:
+    if (
+        ev
+        and ev.earnings
+        and ev.earnings.get("days_to_next_earnings") is not None
+        and ev.earnings["days_to_next_earnings"] <= 21
+    ):
         watch_points.append(
             WatchPoint(
                 item="Earnings report",
@@ -558,7 +584,7 @@ def _synthesise_price_movement(
 
     return PriceMovementOutput(
         ticker=ticker,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         price_move_summary=price_move_summary,
         price_change_pct=price_pct,
         volume_context=vol_context,
@@ -622,7 +648,12 @@ def _synthesise_watchlist(
             elif rsi < 28:
                 risk_signals.append(f"Oversold: RSI {rsi:.0f}")
 
-        if ev and ev.earnings and ev.earnings.get("days_to_next_earnings", 999) <= 14:
+        if (
+            ev
+            and ev.earnings
+            and ev.earnings.get("days_to_next_earnings") is not None
+            and ev.earnings["days_to_next_earnings"] <= 14
+        ):
             risk_signals.append(
                 f"Earnings in {ev.earnings['days_to_next_earnings']} days — binary event risk"
             )
@@ -638,7 +669,12 @@ def _synthesise_watchlist(
             )
         ]
 
-        if ev and ev.earnings and ev.earnings.get("days_to_next_earnings", 999) <= 21:
+        if (
+            ev
+            and ev.earnings
+            and ev.earnings.get("days_to_next_earnings") is not None
+            and ev.earnings["days_to_next_earnings"] <= 21
+        ):
             wps.append(
                 WatchPoint(
                     item="Earnings report",
@@ -689,7 +725,7 @@ def _synthesise_watchlist(
 
     return WatchlistMonitorOutput(
         tickers=tickers,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         portfolio_summary=portfolio_summary,
         ticker_summaries=ticker_summaries,
         macro_risks=macro_risks,
@@ -776,7 +812,7 @@ def _synthesise_trade(
 
     return TradingDecisionOutput(
         ticker=ticker,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         bias=str(result.get("bias", "Neutral")),
         buy_zone=str(result.get("buy_zone", "N/A")),
         stop_loss=str(result.get("stop_loss", "N/A")),

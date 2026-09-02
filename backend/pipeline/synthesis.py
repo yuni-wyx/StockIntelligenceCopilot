@@ -45,7 +45,10 @@ def synthesise_agent_output(bundle: AgentEvidenceBundle, plan: AgentPlan):
         return trace_synthesis(
             bundle.legacy_evidence,
             ExecutionPlan(**legacy_plan),
-            runtime_signals=bundle.external_evidence.get("signals", {}),
+            runtime_signals={
+                **bundle.external_evidence.get("signals", {}),
+                "__research_evidence": bundle.external_evidence.get("research_evidence"),
+            },
         )
 
     if plan.task_type == AgentTaskType.PORTFOLIO_ANALYSIS:

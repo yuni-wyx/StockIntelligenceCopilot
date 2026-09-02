@@ -8,7 +8,7 @@ from typing import Any, List
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -53,7 +53,7 @@ if __package__:
     )
     from .schemas.portfolio_chat import PortfolioChatRequest
     from .schemas.portfolio_monitor import PortfolioMonitorRequest
-    from .services.portfolio_importer import preview_portfolio_csv
+    from .services.portfolio_importer import preview_portfolio_file
     from .services.portfolio_monitor import PortfolioMonitorService
     from .services.portfolio_store import PortfolioStore
     from .symbols import normalize_symbol
@@ -95,7 +95,7 @@ else:
     )
     from schemas.portfolio_chat import PortfolioChatRequest
     from schemas.portfolio_monitor import PortfolioMonitorRequest
-    from services.portfolio_importer import preview_portfolio_csv
+    from services.portfolio_importer import preview_portfolio_file
     from services.portfolio_monitor import PortfolioMonitorService
     from services.portfolio_store import PortfolioStore
     from symbols import normalize_symbol
@@ -119,7 +119,10 @@ app.add_middleware(
 
 
 class ResearchRequest(BaseModel):
-    ticker: str
+    ticker: str = Field(min_length=1)
+    query: str | None = None
+    exchange: str | None = None
+    country: str | None = None
 
 
 class ExplainRequest(BaseModel):
@@ -284,14 +287,11 @@ def api_portfolio_monitor(req: PortfolioMonitorRequest) -> dict:
 
 @app.post("/api/portfolio/import/preview")
 async def api_portfolio_import_preview(file: UploadFile = File(...)) -> dict:
-    if not file.filename or not file.filename.lower().endswith(".csv"):
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Please upload a CSV file."},
-        )
+    if not file.filename or not file.filename.lower().endswith((".csv", ".xlsx")):
+        return JSONResponse(status_code=400, content={"error": "Please upload a CSV or XLSX file."})
     try:
         content = await file.read()
-        preview = preview_portfolio_csv(content)
+        preview = preview_portfolio_file(content, file.filename)
         return serialize_output(preview)
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})

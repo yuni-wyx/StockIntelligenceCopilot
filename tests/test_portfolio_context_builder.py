@@ -13,6 +13,16 @@ if str(ROOT) not in sys.path:
 
 
 class PortfolioContextBuilderTest(unittest.TestCase):
+    def test_grounding_guard_rejects_top_three_value_mislabeled_as_top_five(self) -> None:
+        from backend.services.portfolio_context_builder import _has_grounding_violation
+
+        self.assertTrue(
+            _has_grounding_violation("前五大持股合計佔據 56.60% 的投資組合價值。")
+        )
+        self.assertFalse(
+            _has_grounding_violation("前三大持股合計佔據 56.60% 的投資組合價值。")
+        )
+
     def setUp(self) -> None:
         from backend.services.portfolio_context_builder import PortfolioChatGeneration
 
@@ -526,6 +536,7 @@ class PortfolioContextBuilderTest(unittest.TestCase):
         self.assertIn("Never describe a priced subset as the full portfolio.", source)
         self.assertIn("coverage.allocation_complete", source)
         self.assertIn("Distinguish current-value weight from cost-basis exposure.", source)
+        self.assertIn("Treat market labels as listing/provider-market labels.", source)
 
     def test_missing_news_still_produces_useful_answer(self) -> None:
         from backend.schemas.portfolio_chat import PortfolioChatRequest

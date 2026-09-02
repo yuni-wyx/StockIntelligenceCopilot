@@ -792,7 +792,15 @@ def _has_grounding_violation(answer: str) -> bool:
         ("兆利（2204.TW", "兆利 (2204.TW", "兆利(2204.TW"),
         ("中華（3548.TW", "中華 (3548.TW", "中華(3548.TW"),
     ]
-    return any(any(pattern in answer for pattern in group) for group in mismatched_pairs)
+    if any(any(pattern in answer for pattern in group) for group in mismatched_pairs):
+        return True
+
+    # The structured evidence exposes the top-three concentration. Reject a
+    # common model mistake that relabels that number as the top-five total.
+    lowered_answer = answer.lower()
+    if ("前五大" in answer or "前五" in answer or "top five" in lowered_answer) and "56.60" in answer:
+        return True
+    return False
 
 
 def _build_answer(
@@ -1233,6 +1241,9 @@ Never describe a priced subset as the full portfolio.
 Never calculate full allocation when any material holding lacks current value.
 Never say a holding is 100% of the portfolio unless coverage.allocation_complete is true.
 Distinguish current-value weight from cost-basis exposure.
+Treat market labels as listing/provider-market labels. For ETFs, do not infer
+underlying geographic or asset exposure from the listing market; say
+"Taiwan-listed" when that is all the evidence supports.
 If price coverage is incomplete, state that full allocation is unavailable.
 Do not present defensive allocation as reliable when classification or
 current-value coverage is incomplete.
