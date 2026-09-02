@@ -73,6 +73,8 @@ test("research mode still exists in copilot source", () => {
   assert.match(source, /source_type === "filing"/);
   assert.match(source, /research_conflicts/);
   assert.match(source, /Research data quality notes/);
+  assert.match(source, /research_conflict_details/);
+  assert.match(source, /data_as_of/);
 });
 
 test("signal panel labels are defined for english and traditional chinese", () => {

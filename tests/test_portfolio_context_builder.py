@@ -23,8 +23,31 @@ class PortfolioContextBuilderTest(unittest.TestCase):
             _has_grounding_violation("前三大持股合計佔據 56.60% 的投資組合價值。")
         )
 
+    def test_evidence_cache_reuses_same_portfolio_intent(self) -> None:
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        request = PortfolioChatRequest(
+            question="What holdings do I have?",
+            portfolio=self._portfolio_request(),
+            language="en",
+        )
+
+        first = builder.build_evidence(request, request.portfolio)
+        second = builder.build_evidence(request, request.portfolio)
+
+        self.assertFalse(first.cache_hit)
+        self.assertTrue(second.cache_hit)
+        self.assertEqual(second.tools_called, [])
+
     def setUp(self) -> None:
-        from backend.services.portfolio_context_builder import PortfolioChatGeneration
+        from backend.services.portfolio_context_builder import (
+            PortfolioChatGeneration,
+            clear_portfolio_evidence_cache,
+        )
+
+        clear_portfolio_evidence_cache()
 
         self.llm_patcher = patch(
             "backend.services.portfolio_context_builder._build_llm_answer",

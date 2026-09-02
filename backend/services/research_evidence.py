@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from ..providers.registry import get_research_provider
-from ..schemas.research import ResearchClaim, ResearchEvidence, SecurityIdentity
+from ..schemas.research import ResearchClaim, ResearchConflict, ResearchEvidence, SecurityIdentity
 
 
 def _detect_fundamental_conflicts(
     facts,
     fundamentals: dict | None,
-) -> list[str]:
+) -> list[ResearchConflict]:
     income_statement = (fundamentals or {}).get("income_statement") or {}
     field_by_metric = {
         "Revenue": "revenue_billions",
         "NetIncome": "net_income_billions",
     }
-    conflicts: list[str] = []
+    conflicts: list[ResearchConflict] = []
     for fact in facts:
         # Current fundamentals have no period contract yet; only compare the
         # annual filing so quarterly values are not mistaken for conflicts.
@@ -27,9 +27,23 @@ def _detect_fundamental_conflicts(
             continue
         tolerance = max(abs(float(fact.value)) * 0.05, 0.01)
         if abs(float(fact.value) - float(current_value)) > tolerance:
-            conflicts.append(
+            message = (
                 f"{fact.metric} differs between the {fact.form_type or 'filing'} "
                 f"({fact.value}) and current fundamentals ({current_value})."
+            )
+            conflicts.append(
+                ResearchConflict(
+                    message=message,
+                    metric=fact.metric,
+                    severity=(
+                        "high"
+                        if abs(float(fact.value) - float(current_value)) > tolerance * 2
+                        else "medium"
+                    ),
+                    filing_value=float(fact.value),
+                    fundamentals_value=float(current_value),
+                    source_id=fact.source.source_id,
+                )
             )
     return conflicts
 
@@ -57,6 +71,7 @@ def load_fixture_research_evidence(
         )
 
     facts = [fact for filing in filings for fact in filing.facts]
+    conflict_details = _detect_fundamental_conflicts(facts, fundamentals)
     claims = [
         ResearchClaim(
             claim_text=(
@@ -78,5 +93,6 @@ def load_fixture_research_evidence(
         sources=[filing.source for filing in filings],
         claims=claims,
         data_gaps=[] if filings else [f"No 10-K filing was found for {identity.symbol}."],
-        conflicts=_detect_fundamental_conflicts(facts, fundamentals),
+        conflict_details=conflict_details,
+        conflicts=[detail.message for detail in conflict_details],
     )

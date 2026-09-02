@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
+import time
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
@@ -40,6 +44,7 @@ try:
     from ..schemas.portfolio_intelligence import ReviewItem
     from ..services.portfolio_calculator import calculate_portfolio_metrics
     from ..services.portfolio_store import PortfolioStore
+    from ..services.source_cache import source_ttl_cache
     from ..tools.earnings_tool import EarningsRequest, fetch_earnings
     from ..tools.market_data_tool import MarketDataRequest, fetch_market_data
     from ..tools.news_tool import NewsRequest, fetch_news
@@ -68,6 +73,7 @@ except ImportError:
     from schemas.portfolio_intelligence import ReviewItem
     from services.portfolio_calculator import calculate_portfolio_metrics
     from services.portfolio_store import PortfolioStore
+    from services.source_cache import source_ttl_cache
     from tools.earnings_tool import EarningsRequest, fetch_earnings
     from tools.market_data_tool import MarketDataRequest, fetch_market_data
     from tools.news_tool import NewsRequest, fetch_news
@@ -79,6 +85,12 @@ ZH_DISCLAIMER = "這是教育用途的投資組合檢視，不構成投資建議
 PORTFOLIO_CHAT_PROVIDER = "openai"
 PORTFOLIO_CHAT_MODEL = "gpt-4o-mini"
 logger = logging.getLogger(__name__)
+
+EVIDENCE_CACHE_TTL_SECONDS = 300
+MARKET_DATA_CACHE_TTL_SECONDS = 180
+NEWS_CACHE_TTL_SECONDS = 3600
+EARNINGS_CACHE_TTL_SECONDS = 21600
+_evidence_cache: dict[str, tuple[float, "PortfolioEvidence"]] = {}
 
 HOLDING_ALIASES = {
     "中華": "2204.TW",
@@ -94,6 +106,7 @@ HOLDING_ALIASES = {
 class ResolvedPortfolioContext:
     portfolio: PortfolioRequest
     source: str
+    version: int | None = None
 
 
 PortfolioChatIntent = Literal[
@@ -128,6 +141,89 @@ class PortfolioEvidence:
     bundle: PortfolioChatEvidenceBundle | None = None
     caveats_before_dedup: list[str] = field(default_factory=list)
     user_caveats: list[str] = field(default_factory=list)
+    cache_hit: bool = False
+
+
+def _portfolio_fingerprint(portfolio: PortfolioRequest) -> str:
+    payload = json.dumps(
+        portfolio.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def _evidence_cache_key(
+    portfolio: PortfolioRequest,
+    intent: PortfolioChatIntent,
+    named_tickers: list[str],
+    portfolio_version: int | None,
+) -> str:
+    revision = (
+        f"v{portfolio_version}"
+        if portfolio_version is not None
+        else _portfolio_fingerprint(portfolio)
+    )
+    tickers = ",".join(sorted(named_tickers))
+    return f"{revision}:{intent}:{tickers}"
+
+
+def _get_cached_evidence(key: str) -> PortfolioEvidence | None:
+    cached = _evidence_cache.get(key)
+    if cached is None:
+        return None
+    expires_at, value = cached
+    if expires_at <= time.monotonic():
+        _evidence_cache.pop(key, None)
+        return None
+    result = deepcopy(value)
+    result.cache_hit = True
+    return result
+
+
+def _set_cached_evidence(key: str, value: PortfolioEvidence) -> None:
+    _evidence_cache[key] = (time.monotonic() + EVIDENCE_CACHE_TTL_SECONDS, deepcopy(value))
+    # Keep this process-local cache bounded for long-running demos.
+    if len(_evidence_cache) > 128:
+        oldest_key = min(_evidence_cache, key=lambda item: _evidence_cache[item][0])
+        _evidence_cache.pop(oldest_key, None)
+
+
+def clear_portfolio_evidence_cache() -> None:
+    """Clear process-local evidence cache; useful after data refreshes and in tests."""
+    _evidence_cache.clear()
+    source_ttl_cache.clear()
+
+
+def _fetch_market_data_cached(request: MarketDataRequest):
+    key = source_ttl_cache.make_key("market_data", request)
+    cached = source_ttl_cache.get(key)
+    if cached is not None:
+        return cached
+    response = fetch_market_data(request)
+    source_ttl_cache.set(key, response, ttl_seconds=MARKET_DATA_CACHE_TTL_SECONDS)
+    return response
+
+
+def _fetch_news_cached(request: NewsRequest):
+    key = source_ttl_cache.make_key("news", request)
+    cached = source_ttl_cache.get(key)
+    if cached is not None:
+        return cached
+    response = fetch_news(request)
+    source_ttl_cache.set(key, response, ttl_seconds=NEWS_CACHE_TTL_SECONDS)
+    return response
+
+
+def _fetch_earnings_cached(request: EarningsRequest):
+    key = source_ttl_cache.make_key("earnings", request)
+    cached = source_ttl_cache.get(key)
+    if cached is not None:
+        return cached
+    response = fetch_earnings(request)
+    source_ttl_cache.set(key, response, ttl_seconds=EARNINGS_CACHE_TTL_SECONDS)
+    return response
 
 
 @dataclass
@@ -798,7 +894,10 @@ def _has_grounding_violation(answer: str) -> bool:
     # The structured evidence exposes the top-three concentration. Reject a
     # common model mistake that relabels that number as the top-five total.
     lowered_answer = answer.lower()
-    if ("前五大" in answer or "前五" in answer or "top five" in lowered_answer) and "56.60" in answer:
+    if (
+        ("前五大" in answer or "前五" in answer or "top five" in lowered_answer)
+        and "56.60" in answer
+    ):
         return True
     return False
 
@@ -1327,9 +1426,20 @@ class PortfolioContextBuilder:
         self,
         request: PortfolioChatRequest,
         portfolio: PortfolioRequest,
+        *,
+        portfolio_version: int | None = None,
     ) -> PortfolioEvidence:
         intent = classify_portfolio_chat_intent(request.question)
         named_tickers = _extract_named_tickers(request.question, portfolio)
+        cache_key = _evidence_cache_key(
+            portfolio,
+            intent,
+            named_tickers,
+            portfolio_version,
+        )
+        cached = _get_cached_evidence(cache_key)
+        if cached is not None:
+            return cached
         tools_planned = plan_portfolio_chat_tools(
             intent,
             named_tickers=named_tickers,
@@ -1353,7 +1463,7 @@ class PortfolioContextBuilder:
             for ticker in relevant_tickers[:5]:
                 tools_called.append("market_data")
                 try:
-                    market_data = fetch_market_data(
+                    market_data = _fetch_market_data_cached(
                         MarketDataRequest(
                             ticker=ticker,
                             lookback_days=30,
@@ -1425,7 +1535,7 @@ class PortfolioContextBuilder:
             for ticker in relevant_tickers[:3]:
                 tools_called.append("news")
                 try:
-                    news = fetch_news(NewsRequest(ticker=ticker, max_articles=3))
+                    news = _fetch_news_cached(NewsRequest(ticker=ticker, max_articles=3))
                     evidence_used.append("news")
                     tools_succeeded.append("news")
                     news_evidence[ticker] = [
@@ -1451,7 +1561,7 @@ class PortfolioContextBuilder:
             for ticker in relevant_tickers[:3]:
                 tools_called.append("earnings")
                 try:
-                    earnings = fetch_earnings(EarningsRequest(ticker=ticker))
+                    earnings = _fetch_earnings_cached(EarningsRequest(ticker=ticker))
                     evidence_used.append("earnings")
                     tools_succeeded.append("earnings")
                     latest_report_date = (
@@ -1483,7 +1593,7 @@ class PortfolioContextBuilder:
                     caveats.append(f"Earnings timing was unavailable for {ticker}.")
                     tools_failed.append("earnings")
 
-        return PortfolioEvidence(
+        result = PortfolioEvidence(
             intent=intent,
             named_tickers=named_tickers,
             enrichment=enrichment,
@@ -1499,6 +1609,8 @@ class PortfolioContextBuilder:
             signals=signal_evidence,
             data_as_of=generated_at,
         )
+        _set_cached_evidence(cache_key, result)
+        return result
 
     def resolve_portfolio(
         self,
@@ -1508,6 +1620,7 @@ class PortfolioContextBuilder:
             return ResolvedPortfolioContext(
                 portfolio=request.portfolio,
                 source="direct_portfolio",
+                version=None,
             )
 
         if request.workspace_id:
@@ -1517,6 +1630,7 @@ class PortfolioContextBuilder:
             return ResolvedPortfolioContext(
                 portfolio=record.portfolio,
                 source="saved_workspace",
+                version=record.version,
             )
 
         raise ValueError(
@@ -1529,7 +1643,11 @@ class PortfolioContextBuilder:
         evidence: PortfolioEvidence | None = None,
     ) -> PortfolioContext:
         resolved = self.resolve_portfolio(request)
-        evidence = evidence or self.build_evidence(request, resolved.portfolio)
+        evidence = evidence or self.build_evidence(
+            request,
+            resolved.portfolio,
+            portfolio_version=resolved.version,
+        )
         analysis = calculate_portfolio_metrics(
             resolved.portfolio,
             enrichment=evidence.enrichment,
@@ -1643,7 +1761,11 @@ class PortfolioContextBuilder:
         request_id = str(uuid.uuid4())
         language = _pick_language(request)
         resolved = self.resolve_portfolio(request)
-        evidence = self.build_evidence(request, resolved.portfolio)
+        evidence = self.build_evidence(
+            request,
+            resolved.portfolio,
+            portfolio_version=resolved.version,
+        )
         context = self.build_context(
             request.model_copy(update={"portfolio": resolved.portfolio}),
             evidence=evidence,
@@ -1658,13 +1780,24 @@ class PortfolioContextBuilder:
         evidence.user_caveats = user_caveats
         context = context.model_copy(update={"data_caveats": user_caveats})
         evidence.bundle = _build_evidence_bundle(context, evidence)
-        generation = _build_llm_answer(
-            request.question,
-            evidence.bundle,
-            language=language,
-            intent=evidence.intent,
-            named_tickers=evidence.named_tickers,
-            evidence_caveats=user_caveats,
+        llm_intents = {
+            "holding_comparison",
+            "news_review",
+            "earnings_review",
+            "downside_scenario",
+            "income_review",
+        }
+        generation = (
+            _build_llm_answer(
+                request.question,
+                evidence.bundle,
+                language=language,
+                intent=evidence.intent,
+                named_tickers=evidence.named_tickers,
+                evidence_caveats=user_caveats,
+            )
+            if evidence.intent in llm_intents
+            else PortfolioChatGeneration(answer=None, mode="deterministic")
         )
         if generation.answer and _has_grounding_violation(generation.answer):
             logger.warning(
@@ -1717,6 +1850,8 @@ class PortfolioContextBuilder:
                 ]
             ),
             "evidence_missing": evidence.tools_failed,
+            "evidence_cache_hit": evidence.cache_hit,
+            "llm_allowed": evidence.intent in llm_intents,
             "caveats_before_dedup": caveats_before_dedup,
             "caveats_after_dedup": user_caveats,
         }

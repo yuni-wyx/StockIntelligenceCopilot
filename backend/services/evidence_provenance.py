@@ -315,6 +315,8 @@ def _extract_research_sources(bundle: AgentEvidenceBundle) -> list[SourceMetadat
             url=raw_source.get("source_url"),
             published_at=raw_source.get("published_at"),
             retrieved_at=raw_source.get("retrieved_at"),
+            data_as_of=raw_source.get("data_as_of"),
+            freshness=raw_source.get("freshness"),
             source_tier=raw_source.get("source_tier"),
             tool="sec_edgar",
             confidence=1.0 if raw_source.get("source_tier") == "tier_1" else 0.8,

@@ -144,7 +144,10 @@ class PortfolioSaveRequest(BaseModel):
 
 class SavedPortfolioSummary(BaseModel):
     name: str
+    user_id: str = "local-demo"
+    portfolio_id: str = "current"
     updated_at: datetime
+    version: int = 1
     holding_count: int
     base_currency: str
     risk_profile: str | None = None
@@ -153,7 +156,10 @@ class SavedPortfolioSummary(BaseModel):
 
 class SavedPortfolioRecord(BaseModel):
     name: str
+    user_id: str = "local-demo"
+    portfolio_id: str = "current"
     updated_at: datetime
+    version: int = 1
     portfolio: PortfolioRequest
 
 

@@ -24,6 +24,10 @@ class FixtureSecEdgarProvider:
     def __init__(self, fixture_path: str | Path) -> None:
         self.fixture_path = Path(fixture_path)
 
+    @staticmethod
+    def _parse_optional_datetime(value: str | None) -> datetime | None:
+        return datetime.fromisoformat(value) if value else None
+
     def _load_payloads(self) -> list[dict]:
         paths = (
             sorted(self.fixture_path.glob("*.json"))
@@ -67,7 +71,7 @@ class FixtureSecEdgarProvider:
                     document_id=raw["accession_number"],
                     published_at=datetime.fromisoformat(raw["filing_date"]),
                     retrieved_at=retrieved_at,
-                    data_as_of=datetime.fromisoformat(raw["period_end"]),
+                    data_as_of=self._parse_optional_datetime(raw.get("period_end")),
                     timezone="UTC",
                     freshness="historical_filing",
                     license_note=(
@@ -79,7 +83,7 @@ class FixtureSecEdgarProvider:
                     FundamentalFact(
                         **{key: value for key, value in fact.items() if key != "period_end"},
                         source=source,
-                        period_end=datetime.fromisoformat(fact["period_end"]),
+                        period_end=self._parse_optional_datetime(fact.get("period_end")),
                     )
                     for fact in raw.get("facts", [])
                 ]
@@ -92,7 +96,7 @@ class FixtureSecEdgarProvider:
                     FilingDocument(
                         **filing_fields,
                         filing_date=datetime.fromisoformat(raw["filing_date"]),
-                        period_end=datetime.fromisoformat(raw["period_end"]),
+                        period_end=self._parse_optional_datetime(raw.get("period_end")),
                         identity=identity,
                         source=source,
                         facts=facts,

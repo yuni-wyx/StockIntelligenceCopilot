@@ -23,6 +23,7 @@ class PortfolioStoreTest(unittest.TestCase):
             )
             saved = store.save_portfolio(initial, name="current")
             self.assertEqual(saved.name, "current")
+            self.assertEqual(saved.version, 1)
 
             loaded = store.load_portfolio("current")
             self.assertIsNotNone(loaded)
@@ -35,6 +36,7 @@ class PortfolioStoreTest(unittest.TestCase):
             )
             updated = store.update_portfolio(updated_request, name="current")
             self.assertEqual(updated.portfolio.goal, "Growth")
+            self.assertEqual(updated.version, 2)
 
             listed = store.list_saved_portfolios()
             self.assertEqual(len(listed), 1)

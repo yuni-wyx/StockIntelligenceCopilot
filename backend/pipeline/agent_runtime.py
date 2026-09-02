@@ -103,6 +103,9 @@ def _attach_evidence_audit(
         "research_conflicts": (
             (bundle.external_evidence.get("research_evidence") or {}).get("conflicts", [])
         ),
+        "research_conflict_details": (
+            (bundle.external_evidence.get("research_evidence") or {}).get("conflict_details", [])
+        ),
     }
 
 

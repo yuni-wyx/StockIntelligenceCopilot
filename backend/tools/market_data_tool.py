@@ -17,9 +17,11 @@ from pydantic import BaseModel, Field
 
 try:
     from ..config import PROVIDER_TIMEOUT_SECONDS
+    from ..services.yfinance_timeout import configure_yfinance_timeout
     from ..symbols import detect_market, normalize_symbol
 except ImportError:
     from config import PROVIDER_TIMEOUT_SECONDS
+    from services.yfinance_timeout import configure_yfinance_timeout
     from symbols import detect_market, normalize_symbol
 
 
@@ -105,6 +107,7 @@ def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
     ticker = normalize_symbol(request.ticker)
     market = detect_market(ticker)
     yf_ticker = yf.Ticker(ticker)
+    configure_yfinance_timeout(yf_ticker, PROVIDER_TIMEOUT_SECONDS)
 
     hist = yf_ticker.history(
         period="3mo",

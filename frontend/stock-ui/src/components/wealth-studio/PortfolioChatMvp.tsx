@@ -736,6 +736,24 @@ export function PortfolioChatMvp({
                 <ChatBubble key={message.id} message={message} />
               ))}
 
+              {!hasSavedPortfolio && !wizardStep && state !== "CONFIRM_HOLDINGS" ? (
+                <div className="ml-11 max-w-md rounded-2xl border border-amber-200/20 bg-amber-200/[0.06] p-4 shadow-sm">
+                  <p className="text-sm leading-6 text-zinc-300">
+                    {isChinese
+                      ? "你可以直接輸入持股，也可以一次上傳 CSV／XLSX。"
+                      : "Enter a holding here, or upload a CSV/XLSX file to add several positions at once."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setEditorMode("new")}
+                    disabled={loading}
+                    className="mt-3 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {isChinese ? "＋ 新增持股" : "+ Add holdings"}
+                  </button>
+                </div>
+              ) : null}
+
               {loading ? <ThinkingBubble isChinese={isChinese} /> : null}
 
               {state === "CONFIRM_HOLDINGS" ? (

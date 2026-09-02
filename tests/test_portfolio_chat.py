@@ -16,7 +16,12 @@ if str(ROOT) not in sys.path:
 
 class PortfolioChatApiTest(unittest.TestCase):
     def setUp(self) -> None:
-        from backend.services.portfolio_context_builder import PortfolioChatGeneration
+        from backend.services.portfolio_context_builder import (
+            PortfolioChatGeneration,
+            clear_portfolio_evidence_cache,
+        )
+
+        clear_portfolio_evidence_cache()
 
         self.llm_patcher = patch(
             "backend.services.portfolio_context_builder._build_llm_answer",
@@ -218,7 +223,7 @@ class PortfolioChatApiTest(unittest.TestCase):
 
         builder = PortfolioContextBuilder()
         request = PortfolioChatRequest(
-            question="What should I review first?",
+            question="What recent news should I review for my holdings?",
             portfolio=self._portfolio_payload(),
             language="en",
         )
@@ -253,7 +258,7 @@ class PortfolioChatApiTest(unittest.TestCase):
 
         builder = PortfolioContextBuilder()
         request = PortfolioChatRequest(
-            question="What should I review first?",
+            question="What recent news should I review for my holdings?",
             portfolio=self._portfolio_payload(),
             language="en",
         )
@@ -305,6 +310,30 @@ class PortfolioChatApiTest(unittest.TestCase):
         self.assertIsNone(response.generation_metadata["provider"])
         self.assertFalse(response.generation_metadata["fallback_used"])
 
+    def test_simple_portfolio_question_skips_llm_when_enabled(self) -> None:
+        from backend.schemas.portfolio_chat import PortfolioChatRequest
+        from backend.services.portfolio_context_builder import PortfolioContextBuilder
+
+        builder = PortfolioContextBuilder()
+        request = PortfolioChatRequest(
+            question="What holdings do I have?",
+            portfolio=self._portfolio_payload(),
+            language="en",
+        )
+
+        with patch(
+            "backend.services.portfolio_context_builder._generation_metadata_enabled",
+            return_value=True,
+        ), patch(
+            "backend.services.portfolio_context_builder._build_llm_answer",
+            side_effect=AssertionError("simple portfolio answers must not call the LLM"),
+        ):
+            response = builder.build_response(request)
+
+        self.assertEqual(response.generation_metadata["mode"], "deterministic")
+        self.assertFalse(response.generation_metadata["llm_allowed"])
+
+
     def test_generation_metadata_reports_provider_failure_fallback(self) -> None:
         from backend.schemas.portfolio_chat import PortfolioChatRequest
         from backend.services.portfolio_context_builder import (
@@ -314,7 +343,7 @@ class PortfolioChatApiTest(unittest.TestCase):
 
         builder = PortfolioContextBuilder()
         request = PortfolioChatRequest(
-            question="What holdings do I have?",
+            question="What recent news should I review for my holdings?",
             portfolio=self._portfolio_payload(),
             language="en",
         )

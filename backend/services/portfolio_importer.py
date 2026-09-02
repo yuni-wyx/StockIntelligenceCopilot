@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import csv
 import io
-import zipfile
 import xml.etree.ElementTree as ET
+import zipfile
 
 try:
     from ..schemas.portfolio import HoldingInput

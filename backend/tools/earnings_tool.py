@@ -9,8 +9,12 @@ from langsmith import traceable
 from pydantic import BaseModel, Field
 
 try:
+    from ..config import PROVIDER_TIMEOUT_SECONDS
+    from ..services.yfinance_timeout import configure_yfinance_timeout
     from ..symbols import normalize_symbol
 except ImportError:
+    from config import PROVIDER_TIMEOUT_SECONDS
+    from services.yfinance_timeout import configure_yfinance_timeout
     from symbols import normalize_symbol
 
 
@@ -223,6 +227,7 @@ def fetch_earnings(request: EarningsRequest) -> EarningsResponse:
     """
     ticker = normalize_symbol(request.ticker)
     yf_ticker = yf.Ticker(ticker)
+    configure_yfinance_timeout(yf_ticker, PROVIDER_TIMEOUT_SECONDS)
 
     # ---- Next earnings ----
     next_earnings: Optional[EarningsEstimate] = None

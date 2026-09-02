@@ -69,6 +69,65 @@ class AgentPresentationTest(unittest.TestCase):
         self.assertEqual(payload["ticker"], "TSLA")
         self.assertIn("Explain mode failed", payload["price_move_summary"])
 
+    def test_research_conflict_details_are_preserved_in_api_contract(self) -> None:
+        from backend.api.agent_presentation import agent_result_to_api_response
+        from backend.schemas.agent import (
+            AgentEvidenceBundle,
+            AgentPlan,
+            AgentResult,
+            AgentTask,
+            AgentTaskType,
+        )
+        from backend.schemas.output_schema import StockResearchOutput
+
+        conflict = {
+            "message": "Revenue differs between the 10-K (215.9) and current fundamentals (100.0).",
+            "metric": "Revenue",
+            "severity": "high",
+            "filing_value": 215.9,
+            "fundamentals_value": 100.0,
+            "source_id": "sec:0001045810-26-000012",
+        }
+        result = AgentResult(
+            task=AgentTask(
+                task_type=AgentTaskType.RESEARCH,
+                raw_query="research NVDA",
+                tickers=["NVDA"],
+            ),
+            plan=AgentPlan(
+                task_type=AgentTaskType.RESEARCH,
+                summary="Research NVDA",
+                expected_outputs=["research_summary"],
+            ),
+            evidence=AgentEvidenceBundle(
+                external_evidence={
+                    "research_evidence": {
+                        "conflicts": [conflict["message"]],
+                        "conflict_details": [conflict],
+                    }
+                }
+            ),
+            output=StockResearchOutput(
+                ticker="NVDA",
+                fundamental_summary="Historical filing evidence is available.",
+                recent_news_summary="No news requested.",
+                bull_case="Evidence is available for review.",
+                bear_case="Currentness remains a limitation.",
+                what_to_watch_next=[],
+                overall_sentiment="NEUTRAL",
+            ),
+            output_type="ResearchOutput",
+        )
+
+        payload = agent_result_to_api_response(result)
+
+        self.assertEqual(payload["research_conflicts"], [conflict["message"]])
+        self.assertEqual(payload["research_conflict_details"][0]["severity"], "high")
+        self.assertEqual(
+            payload["research_conflict_details"][0]["source_id"],
+            conflict["source_id"],
+        )
+
     def test_agent_result_links_generated_fields_to_evidence(self) -> None:
         from backend.api.agent_presentation import agent_result_to_api_response
         from backend.schemas.agent import (

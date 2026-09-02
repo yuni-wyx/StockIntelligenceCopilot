@@ -72,6 +72,8 @@ type CopilotOutput = {
     title?: string | null;
     url?: string | null;
     confidence?: number;
+    data_as_of?: string | null;
+    freshness?: string | null;
     source_tier?: string | null;
   }>;
   claim_evidence?: Array<{
@@ -93,6 +95,11 @@ type CopilotOutput = {
   confidence_score?: number;
   research_data_gaps?: string[];
   research_conflicts?: string[];
+  research_conflict_details?: Array<{
+    message: string;
+    metric: string;
+    severity: string;
+  }>;
   volume_context?: string;
 };
 
@@ -115,6 +122,7 @@ function EvidenceAudit({ output }: { output: CopilotOutput }) {
   );
   const researchConflicts = output.research_conflicts ?? [];
   const researchDataGaps = output.research_data_gaps ?? [];
+  const researchConflictDetails = output.research_conflict_details ?? [];
 
   if (sources.length === 0 && claims.length === 0 && unsupported.length === 0) {
     return null;
@@ -148,6 +156,12 @@ function EvidenceAudit({ output }: { output: CopilotOutput }) {
               <div key={source.source_id} className="text-xs text-sky-50">
                 <span className="font-medium">{source.provider || "SEC filing"}</span>
                 {source.ticker ? ` · ${source.ticker}` : ""}
+                {source.data_as_of || source.freshness ? (
+                  <div className="mt-1 text-sky-100/70">
+                    {source.freshness || "Source date"}
+                    {source.data_as_of ? ` · As of ${source.data_as_of.slice(0, 10)}` : ""}
+                  </div>
+                ) : null}
                 {source.url ? (
                   <a href={source.url} target="_blank" rel="noreferrer" className="ml-2 break-all text-amber-100 hover:text-white">
                     Open filing
@@ -162,7 +176,7 @@ function EvidenceAudit({ output }: { output: CopilotOutput }) {
         <div className="mt-3 rounded-lg border border-amber-300/25 bg-amber-300/10 p-3">
           <div className="text-xs font-medium text-amber-100">Research data quality notes</div>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-amber-100/80">
-            {[...researchConflicts, ...researchDataGaps].slice(0, 4).map((item) => (
+            {[...researchConflictDetails.map((item) => `${item.severity.toUpperCase()}: ${item.message}`), ...researchConflicts, ...researchDataGaps].slice(0, 4).map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
@@ -190,6 +204,11 @@ function EvidenceAudit({ output }: { output: CopilotOutput }) {
             <div className="mt-1 break-words text-zinc-500">
               {source.title || source.provider || source.source_id}
             </div>
+            {source.data_as_of || source.freshness ? (
+              <div className="mt-1 text-zinc-600">
+                {source.freshness || "Source date"}{source.data_as_of ? ` · As of ${source.data_as_of.slice(0, 10)}` : ""}
+              </div>
+            ) : null}
             {source.url ? (
               <a
                 href={source.url}

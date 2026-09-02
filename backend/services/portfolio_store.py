@@ -109,6 +109,8 @@ def normalize_saved_portfolio(portfolio: PortfolioRequest) -> tuple[PortfolioReq
 
 
 class PortfolioStore:
+    LOCAL_USER_ID = "local-demo"
+
     def __init__(self, db_path: str | Path | None = None) -> None:
         default_path = Path(__file__).resolve().parents[1] / "data" / "portfolio_store.sqlite3"
         self.db_path = Path(db_path or default_path)
@@ -126,10 +128,40 @@ class PortfolioStore:
                 """
                 CREATE TABLE IF NOT EXISTS portfolios (
                     name TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL DEFAULT 'local-demo',
+                    portfolio_id TEXT NOT NULL DEFAULT 'current',
                     payload_json TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1
                 )
                 """
+            )
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(portfolios)").fetchall()
+            }
+            if "version" not in columns:
+                conn.execute(
+                    "ALTER TABLE portfolios ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
+                )
+            if "user_id" not in columns:
+                conn.execute(
+                    "ALTER TABLE portfolios ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local-demo'"
+                )
+            if "portfolio_id" not in columns:
+                conn.execute(
+                    "ALTER TABLE portfolios ADD COLUMN portfolio_id TEXT NOT NULL DEFAULT 'current'"
+                )
+            # Older named workspaces were migrated with the safe singleton
+            # default above; preserve their identity for the future composite
+            # user/workspace key.
+            conn.execute(
+                "UPDATE portfolios SET portfolio_id = name "
+                "WHERE portfolio_id = 'current' AND name <> 'current'"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_portfolios_user_portfolio "
+                "ON portfolios (user_id, portfolio_id)"
             )
             conn.execute(
                 """
@@ -163,27 +195,43 @@ class PortfolioStore:
         updated_at = datetime.now(timezone.utc).isoformat()
         payload_json = portfolio.model_dump_json()
         with self._connect() as conn:
+            prior = conn.execute(
+                "SELECT payload_json, version FROM portfolios WHERE name = ?",
+                (name,),
+            ).fetchone()
+            version = int(prior["version"] or 1) if prior else 1
+            if prior and prior["payload_json"] != payload_json:
+                version += 1
             conn.execute(
                 """
-                INSERT INTO portfolios (name, payload_json, updated_at)
-                VALUES (?, ?, ?)
+                INSERT INTO portfolios (
+                    name, user_id, portfolio_id, payload_json, updated_at, version
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
+                    user_id=excluded.user_id,
+                    portfolio_id=excluded.portfolio_id,
                     payload_json=excluded.payload_json,
-                    updated_at=excluded.updated_at
+                    updated_at=excluded.updated_at,
+                    version=excluded.version
                 """,
-                (name, payload_json, updated_at),
+                (name, self.LOCAL_USER_ID, name, payload_json, updated_at, version),
             )
             conn.commit()
         return SavedPortfolioRecord(
             name=name,
+            user_id=self.LOCAL_USER_ID,
+            portfolio_id=name,
             updated_at=datetime.fromisoformat(updated_at),
+            version=version,
             portfolio=portfolio,
         )
 
     def load_portfolio(self, name: str = "current") -> SavedPortfolioRecord | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT name, payload_json, updated_at FROM portfolios WHERE name = ?",
+                "SELECT name, user_id, portfolio_id, payload_json, updated_at, version "
+                "FROM portfolios WHERE name = ?",
                 (name,),
             ).fetchone()
         if row is None:
@@ -196,7 +244,10 @@ class PortfolioStore:
             return self.load_portfolio(name)
         return SavedPortfolioRecord(
             name=row["name"],
+            user_id=row["user_id"] or self.LOCAL_USER_ID,
+            portfolio_id=row["portfolio_id"] or row["name"],
             updated_at=datetime.fromisoformat(row["updated_at"]),
+            version=int(row["version"] or 1),
             portfolio=portfolio,
         )
 
@@ -217,7 +268,8 @@ class PortfolioStore:
     def list_saved_portfolios(self) -> list[SavedPortfolioSummary]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT name, payload_json, updated_at FROM portfolios ORDER BY updated_at DESC"
+                "SELECT name, user_id, portfolio_id, payload_json, updated_at, version "
+                "FROM portfolios ORDER BY updated_at DESC"
             ).fetchall()
         results: list[SavedPortfolioSummary] = []
         for row in rows:
@@ -227,7 +279,10 @@ class PortfolioStore:
             results.append(
                 SavedPortfolioSummary(
                     name=row["name"],
+                    user_id=row["user_id"] or self.LOCAL_USER_ID,
+                    portfolio_id=row["portfolio_id"] or row["name"],
                     updated_at=datetime.fromisoformat(row["updated_at"]),
+                    version=int(row["version"] or 1),
                     holding_count=len(payload.holdings),
                     base_currency=payload.base_currency,
                     risk_profile=payload.risk_profile,

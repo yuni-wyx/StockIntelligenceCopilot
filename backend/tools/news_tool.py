@@ -10,9 +10,11 @@ from pydantic import BaseModel, Field
 
 try:
     from ..config import ALPHA_VANTAGE_API_KEY, PROVIDER_TIMEOUT_SECONDS
+    from ..services.yfinance_timeout import configure_yfinance_timeout
     from ..symbols import detect_market, normalize_symbol
 except ImportError:
     from config import ALPHA_VANTAGE_API_KEY, PROVIDER_TIMEOUT_SECONDS
+    from services.yfinance_timeout import configure_yfinance_timeout
     from symbols import detect_market, normalize_symbol
 
 # ── I/O models ───────────────────────────────────────────────────────────────
@@ -77,6 +79,7 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 
 def _extract_yahoo_news(ticker: str, limit: int) -> list[NewsArticle]:
     yf_ticker = yf.Ticker(ticker)
+    configure_yfinance_timeout(yf_ticker, PROVIDER_TIMEOUT_SECONDS)
     feed = getattr(yf_ticker, "news", None) or []
     articles: list[NewsArticle] = []
 

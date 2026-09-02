@@ -77,6 +77,15 @@ class ResearchClaim(BaseModel):
     limitations: list[str] = Field(default_factory=list)
 
 
+class ResearchConflict(BaseModel):
+    message: str
+    metric: str
+    severity: Literal["low", "medium", "high"]
+    filing_value: float
+    fundamentals_value: float
+    source_id: str
+
+
 class ResearchEvidence(BaseModel):
     identity: SecurityIdentity
     filings: list[FilingDocument] = Field(default_factory=list)
@@ -85,4 +94,5 @@ class ResearchEvidence(BaseModel):
     claims: list[ResearchClaim] = Field(default_factory=list)
     data_gaps: list[str] = Field(default_factory=list)
     conflicts: list[str] = Field(default_factory=list)
+    conflict_details: list[ResearchConflict] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)

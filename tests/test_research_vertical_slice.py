@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from backend.providers.registry import get_research_provider
 from backend.providers.sec_edgar import FixtureSecEdgarProvider
@@ -26,6 +28,8 @@ class ResearchVerticalSliceTest(unittest.TestCase):
         self.assertEqual(filings[0].source.source_tier, "tier_1")
         self.assertEqual(filings[0].source.document_id, "0001045810-26-000012")
         self.assertEqual(filings[0].facts[0].source.source_id, filings[0].source.source_id)
+        self.assertEqual(filings[0].source.freshness, "historical_filing")
+        self.assertEqual(filings[0].source.data_as_of.isoformat(), "2026-01-25T00:00:00+00:00")
 
     def test_provider_filters_form_type_and_limit(self) -> None:
         identity = self.provider.resolve_security("NVDA")
@@ -77,6 +81,54 @@ class ResearchVerticalSliceTest(unittest.TestCase):
         assert evidence is not None
         self.assertEqual(len(evidence.conflicts), 1)
         self.assertIn("Revenue differs", evidence.conflicts[0])
+        self.assertEqual(evidence.conflict_details[0].severity, "high")
+        self.assertEqual(evidence.conflict_details[0].metric, "Revenue")
+
+    def test_provider_preserves_filing_when_period_end_is_missing(self) -> None:
+        payload = {
+            "identity": {
+                "canonical_id": "us:issuer:TEST",
+                "symbol": "TEST",
+                "company_name": "Test Holdings",
+            },
+            "filings": [{
+                "document_id": "test-filing-1",
+                "form_type": "8-K",
+                "filing_date": "2026-06-10T00:00:00+00:00",
+                "accession_number": "0000000000-26-000001",
+                "title": "Current Report",
+                "url": "https://www.sec.gov/Archives/edgar/data/test",
+                "facts": [{
+                    "metric": "Revenue",
+                    "value": 10.0,
+                    "unit": "USD millions",
+                    "form_type": "8-K",
+                }],
+            }],
+        }
+        with TemporaryDirectory() as directory:
+            fixture = Path(directory) / "missing-period.json"
+            fixture.write_text(json.dumps(payload), encoding="utf-8")
+            provider = FixtureSecEdgarProvider(fixture)
+            filing = provider.get_filings(provider.resolve_security("TEST"))[0]
+
+        self.assertIsNone(filing.period_end)
+        self.assertIsNone(filing.source.data_as_of)
+        self.assertIsNone(filing.facts[0].period_end)
+        self.assertEqual(filing.source.freshness, "historical_filing")
+
+    def test_provenance_preserves_non_tier_one_source_metadata(self) -> None:
+        evidence = load_fixture_research_evidence(resolve_security("NVDA"))
+        assert evidence is not None
+        payload = evidence.model_dump(mode="json")
+        payload["sources"][0]["source_tier"] = "tier_2"
+        bundle = AgentEvidenceBundle(external_evidence={"research_evidence": payload})
+
+        source = extract_source_metadata(bundle)[0]
+
+        self.assertEqual(source.source_tier, "tier_2")
+        self.assertEqual(source.confidence, 0.8)
+        self.assertEqual(source.freshness, "historical_filing")
 
     def test_research_evidence_includes_additional_facts_and_other_company(self) -> None:
         nvda = load_fixture_research_evidence(resolve_security("NVDA"))

@@ -52,6 +52,7 @@ def agent_result_to_api_response(result: AgentResult) -> dict:
     research_payload = result.evidence.external_evidence.get("research_evidence") or {}
     audit["research_data_gaps"] = research_payload.get("data_gaps", [])
     audit["research_conflicts"] = research_payload.get("conflicts", [])
+    audit["research_conflict_details"] = research_payload.get("conflict_details", [])
     response = {**payload, **audit}
     legacy = result.evidence.legacy_evidence
     if (
