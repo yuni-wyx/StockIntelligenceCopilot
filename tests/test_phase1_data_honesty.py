@@ -55,6 +55,7 @@ class Phase1DataHonestyTest(unittest.TestCase):
         ticker = Mock()
         ticker.history.return_value = history
         ticker.info = {}
+        ticker.fast_info = {}
 
         with patch("backend.tools.market_data_tool.yf.Ticker", return_value=ticker):
             result = fetch_market_data(MarketDataRequest(ticker="AAPL"))
@@ -65,6 +66,37 @@ class Phase1DataHonestyTest(unittest.TestCase):
         self.assertIsNone(result.week_52_low)
         self.assertTrue(result.data_caveats)
         self.assertNotEqual(result.technicals.rsi_14, 50.0)
+
+    def test_market_prefers_yahoo_latest_quote_over_daily_close(self) -> None:
+        from backend.tools.market_data_tool import MarketDataRequest, fetch_market_data
+
+        dates = pd.date_range("2026-01-01", periods=60, freq="D", tz="UTC")
+        history = pd.DataFrame(
+            {
+                "Open": range(100, 160),
+                "High": range(101, 161),
+                "Low": range(99, 159),
+                "Close": range(100, 160),
+                "Volume": [1000] * 60,
+            },
+            index=dates,
+        )
+        ticker = Mock()
+        ticker.history.return_value = history
+        ticker.fast_info = {"last_price": 175.43}
+        ticker.info = {}
+
+        with patch("backend.tools.market_data_tool.yf.Ticker", return_value=ticker):
+            result = fetch_market_data(MarketDataRequest(ticker="AAPL"))
+
+        self.assertEqual(result.current_price, 175.43)
+        self.assertTrue(
+            any(
+                caveat.startswith("Latest quote returned by Yahoo Finance")
+                for caveat in result.data_caveats
+            )
+        )
+        self.assertNotEqual(result.as_of, dates[-1].to_pydatetime().isoformat())
 
 
 if __name__ == "__main__":

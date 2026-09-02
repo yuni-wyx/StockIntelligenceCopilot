@@ -848,6 +848,16 @@ export function PortfolioChatMvp({
                 <textarea
                   value={inputValue}
                   onChange={(event) => onInputChange(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      if (canSubmit) onSubmit();
+                    }
+                  }}
                   rows={2}
                   placeholder={wizardPlaceholder}
                   className="min-h-16 flex-1 resize-y rounded-xl border border-transparent bg-transparent px-3 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-amber-200/30"
@@ -865,7 +875,7 @@ export function PortfolioChatMvp({
                   ) : wizardStep ? (
                     copy.continueCta
                   ) : hasSavedPortfolio ? (
-                    copy.askAboutMyPortfolio
+                    isChinese ? "按 Enter 送出" : "Press Enter to send"
                   ) : (
                     copy.continueCta
                   )}

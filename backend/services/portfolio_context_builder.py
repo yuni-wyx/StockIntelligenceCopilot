@@ -643,6 +643,18 @@ def _format_missing_price_for_ticker(ticker: str, *, language: str) -> str:
     )
 
 
+def _format_live_quote_fallback(ticker: str, *, language: str) -> str:
+    if language == "zh":
+        return (
+            f"目前無法取得 {ticker} 的即時報價；目前價格改用最近一筆日線收盤價，"
+            "可能不是最新成交價。"
+        )
+    return (
+        f"A live quote was unavailable for {ticker}; the latest daily close was used, "
+        "so this may not be the latest traded price."
+    )
+
+
 def _format_news_unavailable(ticker: str | None, *, language: str) -> str:
     if language == "zh":
         if ticker:
@@ -733,6 +745,9 @@ def _normalise_caveat_message(message: str, *, language: str) -> tuple[str, str]
     lowered = message.lower()
     ticker = _extract_caveat_ticker(message)
 
+    if "live quote was unavailable" in lowered:
+        key = f"live_quote_fallback:{ticker or '*'}"
+        return key, _format_live_quote_fallback(ticker or "this holding", language=language)
     if "current price evidence was unavailable" in lowered:
         key = f"missing_price:{ticker or '*'}"
         return key, _format_missing_price_for_ticker(ticker or "this holding", language=language)
@@ -1474,6 +1489,11 @@ class PortfolioContextBuilder:
                         "current_price": market_data.current_price,
                         "market": market_data.market,
                     }
+                    if any(
+                        "Live quote was unavailable" in caveat
+                        for caveat in getattr(market_data, "data_caveats", [])
+                    ):
+                        caveats.append(f"Live quote was unavailable for {ticker}.")
                     market_evidence[ticker] = MarketEvidence(
                         ticker=ticker,
                         market=market_data.market,

@@ -7,7 +7,7 @@ Mock implementation — replace fetch_market_data() with real API calls.
 
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import pandas as pd
@@ -98,6 +98,21 @@ def _seed_for(ticker: str) -> Dict[str, Any]:
     return _TICKER_SEEDS.get(ticker.upper(), _DEFAULT_SEED)
 
 
+def _read_live_price(yf_ticker: yf.Ticker) -> float | None:
+    """Read Yahoo's latest quote without treating a history close as live."""
+    try:
+        fast_info = yf_ticker.fast_info
+        raw_price = (
+            fast_info.get("last_price")
+            if isinstance(fast_info, dict)
+            else getattr(fast_info, "last_price", None)
+        )
+        price = float(raw_price) if raw_price is not None else None
+        return round(price, 2) if price is not None and price > 0 else None
+    except (AttributeError, TypeError, ValueError, KeyError):
+        return None
+
+
 # ── Core mock implementation ─────────────────────────────────────────────────
 @traceable(name="market_data_tool", run_type="tool", tags=["tool", "market-data"])
 def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
@@ -120,8 +135,10 @@ def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
 
     hist = hist.dropna()
 
-    # Current price
-    current = round(hist["Close"].iloc[-1], 2)
+    # Prefer Yahoo's latest quote. The history close is only a fallback and is
+    # explicitly labelled as such in data_caveats below.
+    live_price = _read_live_price(yf_ticker)
+    current = live_price if live_price is not None else round(hist["Close"].iloc[-1], 2)
     prev_close = round(hist["Close"].iloc[-2], 2)
 
     change_1d = round(current - prev_close, 2)
@@ -208,10 +225,19 @@ def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
         atr_14=atr,
     ) if request.include_technicals else None
 
+    quote_caveat = (
+        "Latest quote returned by Yahoo Finance; quote may be exchange-delayed."
+        if live_price is not None
+        else "Live quote was unavailable; current price uses the latest daily Yahoo Finance close."
+    )
     return MarketDataResponse(
         ticker=ticker,
         market=market,
-        as_of=hist.index[-1].to_pydatetime().astimezone(timezone.utc).isoformat(),
+        as_of=(
+            datetime.now(timezone.utc).isoformat()
+            if live_price is not None
+            else hist.index[-1].to_pydatetime().astimezone(timezone.utc).isoformat()
+        ),
         current_price=current,
         price_change_1d=change_1d,
         price_change_pct_1d=change_pct_1d,
@@ -229,7 +255,7 @@ def fetch_market_data(request: MarketDataRequest) -> MarketDataResponse:
         ohlc_history=ohlc,
         technicals=technicals,
         data_caveats=[
-            "Market data is daily Yahoo Finance history; it is not a live quote.",
+            quote_caveat,
             *(
                 ["Market capitalization, beta, or 52-week range was unavailable."]
                 if market_cap is None
