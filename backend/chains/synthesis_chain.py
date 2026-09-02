@@ -90,6 +90,35 @@ def _momentum_label(pct_1w: float) -> str:
     return "FLAT"
 
 
+def _evidence_gap_case(
+    label: str,
+    ev: Any,
+    research_payload: dict[str, Any],
+) -> str:
+    """Explain why a directional case cannot be grounded by current evidence."""
+    missing: list[str] = []
+    if not ev or not ev.fundamentals:
+        missing.append("current fundamentals")
+    if not ev or not ev.market_data:
+        missing.append("market context")
+    if not ev or not ev.earnings:
+        missing.append("earnings context")
+
+    available: list[str] = []
+    if research_payload.get("facts"):
+        available.append("historical SEC filing facts")
+    if ev and ev.news:
+        available.append("recent news")
+
+    parts = [f"{label.upper()} CASE: No grounded directional driver is available."]
+    if available:
+        parts.append(f"Available evidence: {', '.join(available)}.")
+    if missing:
+        parts.append(f"Missing: {', '.join(missing)}.")
+    parts.append("The available evidence is not sufficient to establish this case.")
+    return " ".join(parts)
+
+
 def _safe_confidence_int(value: Any) -> int:
     try:
         conf = int(float(value))
@@ -345,7 +374,7 @@ def _synthesise_research(
     bull_case = (
         "BULL CASE: " + "; ".join(bull_points)
         if bull_points
-        else "Insufficient data for bull case."
+        else _evidence_gap_case("bull", ev, research_payload)
     )
 
     bear_points: List[str] = []
@@ -368,7 +397,7 @@ def _synthesise_research(
     bear_case = (
         "BEAR CASE: " + "; ".join(bear_points)
         if bear_points
-        else "Insufficient data for bear case."
+        else _evidence_gap_case("bear", ev, research_payload)
     )
 
     watch_points: List[WatchPoint] = []
