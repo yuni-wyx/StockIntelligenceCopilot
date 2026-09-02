@@ -16,6 +16,29 @@ class _FailingChain:
 
 
 class TradeSynthesisFallbackTest(unittest.TestCase):
+    def test_missing_market_data_explains_provider_failure_without_raw_error(self) -> None:
+        from backend.chains.synthesis_chain import _heuristic_trade_decision
+        from backend.schemas.evidence_schema import TickerEvidence
+
+        output = _heuristic_trade_decision(
+            "AAPL",
+            TickerEvidence(
+                ticker="AAPL",
+                tool_errors=["[market_data] TimeoutError: request timed out"],
+            ),
+        )
+
+        self.assertEqual(output.buy_zone, "Current price unavailable")
+        self.assertIn(
+            "Current price unavailable; price-based levels were not calculated.",
+            output.reasoning,
+        )
+        self.assertIn(
+            "Market data provider timed out; price-based levels were not calculated.",
+            output.reasoning,
+        )
+        self.assertNotIn("request timed out", " ".join(output.reasoning))
+
     def test_execute_pipeline_trade_uses_heuristic_setup_by_default(self) -> None:
         from backend.pipeline.orchestrator import execute_pipeline
         from backend.schemas.evidence_schema import AggregatedEvidence, TickerEvidence

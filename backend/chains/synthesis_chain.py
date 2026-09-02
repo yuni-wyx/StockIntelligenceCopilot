@@ -189,6 +189,22 @@ def _signal_watch_point(signal_payload: dict[str, Any] | None) -> WatchPoint | N
     )
 
 
+def _market_data_error_note(ev: Any) -> str | None:
+    for error in getattr(ev, "tool_errors", []) or []:
+        if not str(error).lower().startswith("[market_data]"):
+            continue
+        lowered = str(error).lower()
+        if "timeout" in lowered:
+            return "Market data provider timed out; price-based levels were not calculated."
+        if "connection" in lowered:
+            return "Market data provider connection failed; price-based levels were not calculated."
+        return (
+            "Market data provider did not return usable data; "
+            "price-based levels were not calculated."
+        )
+    return None
+
+
 def _llm_trade_synthesis_enabled() -> bool:
     return llm_trade_synthesis_enabled()
 
@@ -255,6 +271,11 @@ def _heuristic_trade_decision(
     reasoning: List[str] = []
     if current > 0:
         reasoning.append(f"Fallback setup anchored to the latest retrieved price (${current:.2f}).")
+    else:
+        reasoning.append("Current price unavailable; price-based levels were not calculated.")
+        provider_note = _market_data_error_note(ev)
+        if provider_note:
+            reasoning.append(provider_note)
     if month_move or day_move:
         reasoning.append(
             "Recent momentum snapshot: "
@@ -472,23 +493,30 @@ def _synthesise_price_movement(
     signal_summary = _signal_summary_text(signal_payload)
     signal_caveat = _signal_caveat_text(signal_payload)
 
-    move_direction = "rallied" if price_pct >= 0 else "declined"
-    volume_label = (
-        "strong conviction"
-        if vol_ratio > 1.5
-        else "moderate participation"
-        if vol_ratio > 1.0
-        else "light volume, possible noise"
-    )
-    vol_context = (
-        f"Volume was {vol_ratio:.1f}x the 30-day average, suggesting "
-        f"{volume_label}."
-    )
-
-    price_move_summary = (
-        f"{ticker} {move_direction} {_fmt_pct(price_pct)} "
-        f"(${price_chg:+.2f}) to ${current:.2f}. {vol_context}"
-    )
+    has_current_price = isinstance(current, (int, float)) and current > 0
+    if not md or not has_current_price:
+        price_move_summary = (
+            f"{ticker} current price movement unavailable. Market data was not "
+            "available, so price direction and percentage change could not be determined."
+        )
+        vol_context = "Volume context unavailable because market data was not available."
+    else:
+        move_direction = "rallied" if price_pct >= 0 else "declined"
+        volume_label = (
+            "strong conviction"
+            if vol_ratio > 1.5
+            else "moderate participation"
+            if vol_ratio > 1.0
+            else "light volume, possible noise"
+        )
+        vol_context = (
+            f"Volume was {vol_ratio:.1f}x the 30-day average, suggesting "
+            f"{volume_label}."
+        )
+        price_move_summary = (
+            f"{ticker} {move_direction} {_fmt_pct(price_pct)} "
+            f"(${price_chg:+.2f}) to ${current:.2f}. {vol_context}"
+        )
     if signal_summary:
         price_move_summary = f"{price_move_summary} {signal_summary}"
     if signal_caveat:
