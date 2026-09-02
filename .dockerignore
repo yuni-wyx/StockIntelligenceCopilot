@@ -13,3 +13,7 @@ frontend/stock-ui/node_modules
 frontend/stock-ui/.env.local
 backend/.env.example
 backend/.env
+backend/data/
+*.csv
+*.xlsx
+*.xls
