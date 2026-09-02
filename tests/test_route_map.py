@@ -15,6 +15,7 @@ class RouteMapTest(unittest.TestCase):
 
         expected = {
             ("GET", "/"),
+            ("GET", "/health"),
             ("GET", "/docs"),
             ("GET", "/openapi.json"),
             ("POST", "/api/research"),
@@ -64,3 +65,11 @@ class RouteMapTest(unittest.TestCase):
 
         self.assertNotEqual(response.status_code, 404)
         self.assertEqual(response.status_code, 200)
+
+    def test_health_route_returns_ok(self):
+        from fastapi.testclient import TestClient
+
+        response = TestClient(app).get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})

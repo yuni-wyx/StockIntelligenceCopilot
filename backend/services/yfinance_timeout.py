@@ -17,15 +17,25 @@ def configure_yfinance_timeout(ticker: Any, timeout_seconds: float) -> Any:
         return ticker
 
     timeout = max(1.0, float(timeout_seconds))
-    for name in ("get", "post", "get_raw_json", "cache_get"):
+    timeout_positions = {"get": 2, "post": 3, "get_raw_json": 2, "cache_get": 2}
+    for name in timeout_positions:
         original = getattr(data, name, None)
         if not callable(original) or getattr(original, "_copilot_timeout_bound", False):
             continue
 
-        def bounded(*args, __original=original, **kwargs):
-            requested = kwargs.get("timeout", timeout)
-            kwargs["timeout"] = min(float(requested), timeout)
-            return __original(*args, **kwargs)
+        timeout_position = timeout_positions[name]
+
+        def bounded(*args, __original=original, __timeout_position=timeout_position, **kwargs):
+            mutable_args = list(args)
+            requested = kwargs.pop("timeout", None)
+            if requested is None and len(mutable_args) > __timeout_position:
+                requested = mutable_args[__timeout_position]
+            effective = min(float(requested if requested is not None else timeout), timeout)
+            if len(mutable_args) > __timeout_position:
+                mutable_args[__timeout_position] = effective
+            else:
+                kwargs["timeout"] = effective
+            return __original(*mutable_args, **kwargs)
 
         bounded._copilot_timeout_bound = True
         setattr(data, name, bounded)

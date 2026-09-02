@@ -144,6 +144,11 @@ def root() -> dict:
     return {"message": "Stock Intelligence Copilot API is running."}
 
 
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
 def _execute_runtime_route(task, *, allow_legacy_fallback: bool = True) -> Any:
     try:
         result = execute_agent_task(task, store=portfolio_store)
